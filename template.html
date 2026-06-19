@@ -2,547 +2,630 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Earnings Calendar</title>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#f7f6f3;--surface:#fff;--border:#e5e3dc;--border-strong:#c9c7be;
-  --text:#1a1916;--muted:#6a6860;--faint:#9e9b93;
-  --accent:#1a56a0;--accent-bg:#eaf1fb;--accent-text:#0c447c;
-  --green:#0f6e56;--green-bg:#e1f5ee;--green-text:#085041;
-  --purple:#3c3489;--purple-bg:#eeedfe;
-  --amber:#633806;--amber-bg:#faeeda;
-  --red:#791f1f;--red-bg:#fcebeb;
-  --r:10px;--rs:6px;
+  --bg:#0d0e10;--surface:#16181c;--surface2:#1e2025;--surface3:#252730;
+  --border:#2a2c33;--border2:#333540;
+  --text:#e2e4ea;--muted:#8b8f9e;--faint:#4a4d5a;
+  --green:#22c55e;--green-bg:rgba(34,197,94,.12);
+  --red:#ef4444;--red-bg:rgba(239,68,68,.12);
+  --accent:#7c3aed;--accent2:#a78bfa;--accent-bg:rgba(124,58,237,.15);
+  --amber:#f59e0b;--blue:#3b82f6;
+  --rs:8px;
 }
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
-
-.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:54px;position:sticky;top:0;z-index:300}
-.logo{font-weight:600;font-size:15px}
-.topbar-right{display:flex;align-items:center;gap:8px}
-.search-wrap{position:relative}
-.search-wrap input{padding:6px 10px 6px 28px;border:1px solid var(--border-strong);border-radius:var(--rs);font-size:12px;font-family:inherit;outline:none;width:180px;background:var(--bg)}
-.search-wrap input:focus{border-color:var(--accent);background:var(--surface)}
-.si{position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--faint);font-size:12px;pointer-events:none}
-.filt{padding:5px 11px;border-radius:20px;border:1px solid var(--border-strong);background:none;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;font-family:inherit}
-.filt:hover{background:var(--border)}.filt.on{background:var(--text);color:#fff;border-color:var(--text)}
-
-.cal-nav{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px}
-.nav-btn{width:28px;height:28px;border-radius:50%;border:1px solid var(--border-strong);background:none;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
-.nav-btn:hover{background:var(--border)}
-.month-title{font-size:16px;font-weight:600;min-width:160px}
-.today-btn{padding:5px 11px;border:1px solid var(--border-strong);border-radius:var(--rs);background:none;font-size:12px;color:var(--muted);cursor:pointer;font-family:inherit}
-.today-btn:hover{background:var(--border)}
-.legend{display:flex;gap:10px;margin-left:auto;align-items:center}
-.li{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--faint)}
-.ld{width:8px;height:8px;border-radius:50%}
-.ld-pre{background:#d97706}.ld-after{background:#7c3aed}.ld-major{background:#1a56a0}
-
-.cal-wrap{max-width:1200px;margin:0 auto;padding:16px 20px 0}
-.cal-header{display:grid;grid-template-columns:repeat(7,1fr);gap:1px}
-.chc{text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);padding:6px 0 8px}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);border:1px solid var(--border)}
-.cell{background:var(--surface);min-height:110px;padding:6px;display:flex;flex-direction:column;position:relative;overflow:hidden}
-.cell.has-data{cursor:pointer}.cell.has-data:hover{background:#faf9f7}
-.cell.other{background:var(--bg)}.cell.other .cday{color:var(--faint)}
-.cell.today{background:var(--accent-bg)}.cell.today .cday{background:var(--accent);color:#fff;border-radius:50%}
-.cell.wknd{background:#fdfcfa}
-.cell.sel{box-shadow:inset 0 0 0 2px var(--accent)}
-.cell.has-past{cursor:pointer}.cell.has-past:hover{background:#faf9f7}
-.cday{width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:4px;flex-shrink:0}
-.chips{display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden}
-.chip{font-size:10px;font-weight:600;padding:2px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cp{background:var(--amber-bg);color:var(--amber)}.ca{background:var(--purple-bg);color:var(--purple)}
-.ct{background:var(--border);color:var(--faint)}.cm{background:var(--accent-bg);color:var(--accent-text)}
-.more{font-size:10px;color:var(--faint);padding:1px 3px}
-.ccnt{position:absolute;top:5px;right:5px;font-size:9px;color:var(--faint)}
-
-.day-panel{max-width:1200px;margin:0 20px;background:var(--surface);border:1px solid var(--border);border-top:none}
-.day-panel.hide{display:none}
-.dp-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.dp-title{font-size:14px;font-weight:600}.dp-sub{font-size:11px;color:var(--faint);margin-top:1px}
-.dp-close{width:24px;height:24px;border-radius:50%;border:1px solid var(--border-strong);background:none;cursor:pointer;font-size:14px;color:var(--muted);display:flex;align-items:center;justify-content:center}
-.dp-close:hover{background:var(--border)}
-.earn-table{width:100%;border-collapse:collapse;font-size:12px}
-.earn-table th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);padding:8px 14px;border-bottom:1px solid var(--border);white-space:nowrap;background:var(--bg)}
-.earn-table th.r,.earn-table td.r{text-align:right}
-.earn-table td{padding:9px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
-.earn-table tr:last-child td{border-bottom:none}
-.earn-table tbody tr{cursor:pointer}
-.earn-table tbody tr:hover td{background:var(--accent-bg)}
-.sym{font-weight:700;color:var(--accent);font-size:12px}
-.co a{color:var(--text);text-decoration:none;font-weight:500;font-size:12px}
-.co a:hover{color:var(--accent)}
-.co-q{font-size:10px;color:var(--faint)}
-.tbadge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;white-space:nowrap}
-.tbp{background:var(--amber-bg);color:var(--amber)}.tba{background:var(--purple-bg);color:var(--purple)}.tbt{background:var(--border);color:var(--faint)}
-.eps{font-weight:500}.mcap{color:var(--muted)}
-
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px}
-.modal-overlay.hide{display:none}
-.modal{background:var(--surface);border-radius:var(--r);width:100%;max-width:700px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.22)}
-.modal-head{padding:16px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-shrink:0}
-.modal-ticker{font-size:22px;font-weight:700;color:var(--accent)}
-.modal-name{font-size:13px;color:var(--muted);margin-top:2px}
-.modal-meta{font-size:11px;color:var(--faint);margin-top:3px}
-.modal-close{width:28px;height:28px;border-radius:50%;border:1px solid var(--border-strong);background:none;cursor:pointer;font-size:16px;color:var(--muted);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.modal-close:hover{background:var(--border)}
-.modal-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--surface)}
-.mtab{padding:10px 18px;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;border:none;background:none;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-1px}
-.mtab:hover{color:var(--text)}.mtab.on{color:var(--accent);border-bottom-color:var(--accent)}
-.modal-body{overflow-y:auto;flex:1}
-.tab-pane{display:none;padding:16px 20px}.tab-pane.on{display:block}
-
-.upcoming-card{background:var(--accent-bg);border-radius:var(--rs);padding:12px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
-.uc-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent-text);opacity:.7}
-.uc-val{font-size:13px;font-weight:600;color:var(--accent-text);margin-top:2px}
-.uc-big{font-size:18px;font-weight:700;color:var(--accent-text);margin-top:2px}
-
-.sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);margin-bottom:10px}
-.chart-legend{display:flex;gap:12px;margin-bottom:8px}
-.cl-item{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--faint)}
-.cl-dot{width:10px;height:10px;border-radius:2px}
-.hist-chart{display:flex;align-items:flex-end;gap:8px;height:80px;margin-bottom:14px}
-.bar-grp{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
-.bars{display:flex;align-items:flex-end;gap:2px;height:64px}
-.bar{width:18px;border-radius:2px 2px 0 0;min-height:3px}
-.bar-est{background:var(--border-strong);opacity:.7}
-.bar-beat{background:#0f6e56}.bar-miss{background:#c0392b}.bar-neu{background:var(--accent)}
-.bar-rev{background:#1a56a0;opacity:.75}
-.bar-q{font-size:9px;color:var(--faint);text-align:center;white-space:nowrap}
-.hist-table{width:100%;border-collapse:collapse;font-size:12px}
-.hist-table th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);padding:6px 10px;border-bottom:1px solid var(--border)}
-.hist-table th.r,.hist-table td.r{text-align:right}
-.hist-table td{padding:8px 10px;border-bottom:1px solid var(--border)}
-.hist-table tr:last-child td{border-bottom:none}
-.beat{color:var(--green);font-weight:600}.miss{color:var(--red);font-weight:600}
-.no-data{padding:24px;text-align:center;color:var(--faint);font-size:12px}
-.ext-link{display:inline-flex;align-items:center;gap:4px;color:var(--accent);font-size:11px;text-decoration:none;margin-top:14px}
-.ext-link:hover{text-decoration:underline}
-
-.news-list{display:flex;flex-direction:column}
-.news-item{padding:12px 0;border-bottom:1px solid var(--border)}
-.news-item:last-child{border-bottom:none}
-.news-title a{font-size:13px;font-weight:500;color:var(--text);text-decoration:none;line-height:1.4;display:block}
-.news-title a:hover{color:var(--accent)}
-.news-desc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
-.news-meta{font-size:11px;color:var(--faint);margin-top:5px}
-
-@media(max-width:700px){
-  .cell{min-height:70px;padding:4px}
-  .legend{display:none}
-  .earn-table th:nth-child(n+5),.earn-table td:nth-child(n+5){display:none}
-  .modal{max-height:100vh;border-radius:0}
-  .modal-overlay{padding:0;align-items:flex-end}
-}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;overflow:hidden;height:100vh}
+.navbar{height:52px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0;z-index:50;position:relative}
+.nav-logo{font-size:16px;font-weight:800;letter-spacing:-.5px;color:var(--text);white-space:nowrap}
+.nav-logo span{color:var(--accent2)}
+.nav-links{display:flex;gap:2px}
+.nav-link{padding:5px 10px;border-radius:6px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;border:none;background:none;font-family:inherit}
+.nav-link:hover,.nav-link.on{color:var(--text);background:var(--surface2)}
+.nav-search{flex:1;max-width:260px;position:relative}
+.nav-search input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:6px 12px 6px 30px;font-size:12px;color:var(--text);outline:none;font-family:inherit}
+.nav-search input::placeholder{color:var(--faint)}
+.nav-si{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--faint);font-size:13px;pointer-events:none}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted)}
+.market-dot{width:7px;height:7px;border-radius:50%;background:var(--red);flex-shrink:0;display:inline-block}
+.market-dot.open{background:var(--green)}
+.main{display:flex;height:calc(100vh - 52px)}
+.cal-section{flex:1;overflow-y:auto;padding:16px;min-width:0}
+.right-panel{width:360px;flex-shrink:0;border-left:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;background:var(--surface)}
+.week-nav{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.wbtn{width:28px;height:28px;border-radius:50%;background:var(--surface);border:1px solid var(--border2);cursor:pointer;color:var(--muted);font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1}
+.wbtn:hover{border-color:var(--accent2);color:var(--text)}
+.week-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--faint)}
+.week-range{font-size:16px;font-weight:700;color:var(--text)}
+.today-btn{padding:4px 10px;border-radius:12px;border:1px solid var(--border2);background:none;font-size:11px;color:var(--muted);cursor:pointer;font-family:inherit}
+.today-btn:hover{border-color:var(--accent2);color:var(--accent2)}
+.week-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.day-col{background:var(--surface);border-radius:var(--rs);padding:10px;display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);min-height:120px}
+.day-col.today-col{border-color:var(--accent);background:rgba(124,58,237,.04)}
+.day-hd{font-size:12px;font-weight:700;color:var(--muted);padding-bottom:6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px}
+.day-hd.today-hd{color:var(--accent2)}
+.day-num{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+.today-num{background:var(--accent);color:#fff}
+.sec-hd{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);margin-top:4px;display:flex;align-items:center;gap:3px}
+.logos-wrap{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.logo-card{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:4px;border-radius:6px;transition:background .1s}
+.logo-card:hover{background:var(--surface2)}
+.logo-card.sel{background:var(--accent-bg);outline:1px solid var(--accent)}
+.logo-img-wrap{width:42px;height:42px;border-radius:8px;overflow:hidden;background:var(--surface2);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;position:relative}
+.logo-img-wrap img{width:100%;height:100%;object-fit:contain;position:absolute;top:0;left:0}
+.logo-fb{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}
+.logo-sym{font-size:10px;font-weight:700;color:var(--text);text-align:center;max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.no-earn{color:var(--faint);font-size:11px;text-align:center;padding:16px 0;flex:1;display:flex;align-items:center;justify-content:center}
+.more-lbl{font-size:9px;color:var(--faint);padding:4px 2px;align-self:flex-end}
+/* Right panel prices */
+.rp-prices{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;padding:10px;border-bottom:1px solid var(--border);flex-shrink:0}
+.price-box{background:var(--surface2);border-radius:6px;padding:7px 8px}
+.price-sym{font-size:9px;font-weight:800;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+.price-val{font-size:13px;font-weight:700;color:var(--text);margin-top:2px}
+.price-chg{font-size:10px;margin-top:1px}
+.up{color:var(--green)}.dn{color:var(--red)}.flat{color:var(--muted)}
+/* Feed */
+.feed-hd{padding:10px 12px 8px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.feed-sub{font-size:10px;color:var(--faint);font-weight:400}
+.feed-item{padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
+.feed-item:hover{background:var(--surface2)}
+.fi-head{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.fi-logo{width:32px;height:32px;border-radius:6px;overflow:hidden;background:var(--surface2);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+.fi-logo img{width:100%;height:100%;object-fit:contain;position:absolute}
+.fi-logo-fb{font-size:9px;font-weight:800;color:#fff;z-index:1}
+.fi-title{font-size:12px;font-weight:600}
+.fi-sub{font-size:10px;color:var(--faint);margin-top:1px}
+.fi-grid{display:grid;grid-template-columns:32px 1fr 1fr 40px;gap:3px;font-size:10px}
+.fi-lbl{color:var(--faint);font-weight:700;display:flex;align-items:center}
+.fi-est{color:var(--muted)}
+.fi-act{font-weight:600}
+.fi-surp{font-weight:700;text-align:right}
+/* Stock Detail */
+.sd{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.sd-head{padding:12px;border-bottom:1px solid var(--border);flex-shrink:0}
+.sd-top{display:flex;align-items:flex-start;gap:10px}
+.sd-logo{width:48px;height:48px;border-radius:10px;overflow:hidden;background:var(--surface2);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+.sd-logo img{width:100%;height:100%;object-fit:contain;position:absolute}
+.sd-logo-fb{font-size:14px;font-weight:800;color:#fff;z-index:1}
+.sd-ticker{font-size:22px;font-weight:800}
+.sd-name{font-size:11px;color:var(--muted);margin-top:2px}
+.sd-when{font-size:10px;color:var(--faint);margin-top:2px}
+.sd-x{margin-left:auto;width:24px;height:24px;border-radius:50%;border:1px solid var(--border2);background:none;color:var(--muted);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
+.sd-x:hover{background:var(--surface2);color:var(--text)}
+.sd-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:10px}
+.met{background:var(--surface2);border-radius:6px;padding:6px 7px}
+.met-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--faint)}
+.met-val{font-size:12px;font-weight:700;margin-top:2px}
+.sd-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 12px;flex-shrink:0}
+.sd-tab{padding:8px 10px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .1s}
+.sd-tab:hover{color:var(--text)}
+.sd-tab.on{color:var(--accent2);border-bottom-color:var(--accent2)}
+.sd-pane{display:none;overflow-y:auto;flex:1}.sd-pane.on{display:block}
+/* Chart */
+.chart-wrap{padding:12px 12px 6px}
+.chart-legend{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.leg{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted)}
+.leg-dot{width:8px;height:8px;border-radius:2px}
+.chart-canvas-wrap{width:100%;height:155px}
+canvas.ec{display:block;width:100%;height:155px}
+/* History table */
+.hist-wrap{padding:0 12px 12px}
+.beat-stat{background:var(--surface2);border-radius:6px;padding:6px 8px;font-size:11px;color:var(--muted);margin-bottom:8px}
+.beat-stat strong{color:var(--text)}
+table.ht{width:100%;border-collapse:collapse;font-size:11px}
+.ht th{text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);padding:5px 5px;border-bottom:1px solid var(--border)}
+.ht th.r,.ht td.r{text-align:right}
+.ht td{padding:5px 5px;border-bottom:1px solid var(--border);color:var(--text)}
+.ht tr:last-child td{border-bottom:none}
+.ht tr:hover td{background:var(--surface2)}
+.beat{color:var(--green);font-weight:700}.miss{color:var(--red);font-weight:700}
+/* News */
+.news-wrap{padding:8px 12px}
+.ni{padding:8px 0;border-bottom:1px solid var(--border)}
+.ni:last-child{border-bottom:none}
+.ni a{font-size:12px;font-weight:500;color:var(--text);text-decoration:none;line-height:1.4;display:block}
+.ni a:hover{color:var(--accent2)}
+.ni-meta{font-size:10px;color:var(--faint);margin-top:3px}
+/* Upcoming banner */
+.uc-banner{background:rgba(124,58,237,.12);border:1px solid var(--accent);border-radius:var(--rs);padding:10px 12px;margin:12px 12px 0;display:flex;align-items:center;justify-content:space-between}
+.uc-l{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent2);opacity:.7}
+.uc-v{font-size:12px;font-weight:600;color:var(--accent2);margin-top:2px}
+.uc-big{font-size:18px;font-weight:800;color:var(--accent2);margin-top:2px}
+.no-data{padding:20px;text-align:center;color:var(--faint);font-size:12px}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
 </style>
 </head>
 <body>
-
-<div class="topbar">
-  <div class="logo">📅 Earnings Calendar</div>
-  <div class="topbar-right">
-    <div class="search-wrap">
-      <span class="si">⌕</span>
-      <input type="text" id="searchBox" placeholder="Symbol or company…" oninput="applySearch()">
-    </div>
-    <button class="filt on" onclick="setTime(this,'all')">All</button>
-    <button class="filt" onclick="setTime(this,'pre')">Pre-mkt</button>
-    <button class="filt" onclick="setTime(this,'after')">After hrs</button>
+<nav class="navbar">
+  <div class="nav-logo">EARNINGS <span>CAL</span></div>
+  <div class="nav-links">
+    <button class="nav-link on">Calendar</button>
   </div>
-</div>
-
-<div class="cal-nav">
-  <button class="nav-btn" onclick="changeMonth(-1)">‹</button>
-  <button class="nav-btn" onclick="changeMonth(1)">›</button>
-  <div class="month-title" id="monthTitle"></div>
-  <button class="today-btn" onclick="goToday()">Today</button>
-  <div class="legend">
-    <div class="li"><div class="ld ld-pre"></div>Pre-market</div>
-    <div class="li"><div class="ld ld-after"></div>After hours</div>
-    <div class="li"><div class="ld ld-major"></div>Major ($50B+)</div>
+  <div class="nav-search">
+    <span class="nav-si">&#9906;</span>
+    <input type="text" placeholder="Search ticker..." id="searchBox" oninput="doSearch(this.value)" autocomplete="off">
   </div>
-</div>
-
-<div class="cal-wrap">
-  <div class="cal-header">
-    <div class="chc">Sun</div><div class="chc">Mon</div><div class="chc">Tue</div>
-    <div class="chc">Wed</div><div class="chc">Thu</div><div class="chc">Fri</div><div class="chc">Sat</div>
+  <div class="nav-right">
+    <span id="builtLbl"></span>
+    <span class="market-dot" id="mktDot"></span>
+    <span id="mktTxt"></span>
   </div>
-  <div class="cal-grid" id="calGrid"></div>
-</div>
-
-<div class="day-panel hide" id="dayPanel">
-  <div class="dp-header">
-    <div><div class="dp-title" id="dpTitle"></div><div class="dp-sub" id="dpSub"></div></div>
-    <button class="dp-close" onclick="closePanel()">✕</button>
-  </div>
-  <div style="overflow-x:auto;max-height:300px;overflow-y:auto">
-    <table class="earn-table">
-      <thead><tr>
-        <th style="width:70px">Symbol</th><th>Company</th><th style="width:100px">When</th>
-        <th class="r" style="width:90px">EPS Est.</th><th class="r" style="width:90px">Last Yr</th>
-        <th class="r" style="width:100px">Market Cap</th><th style="width:80px">Quarter</th>
-      </tr></thead>
-      <tbody id="dpBody"></tbody>
-    </table>
-  </div>
-</div>
-<div style="height:24px"></div>
-
-<div class="modal-overlay hide" id="modalOverlay" onclick="handleOverlayClick(event)">
-  <div class="modal" id="modalBox">
-    <div class="modal-head">
+</nav>
+<div class="main">
+  <div class="cal-section">
+    <div class="week-nav">
+      <button class="wbtn" onclick="changeWeek(-1)">&#8249;</button>
       <div>
-        <div class="modal-ticker" id="mTicker"></div>
-        <div class="modal-name" id="mName"></div>
-        <div class="modal-meta" id="mMeta"></div>
+        <div class="week-lbl">Earnings Calendar</div>
+        <div class="week-range" id="weekRange">—</div>
       </div>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+      <button class="wbtn" onclick="changeWeek(1)">&#8250;</button>
+      <button class="today-btn" onclick="goNow()">This Week</button>
     </div>
-    <div class="modal-tabs">
-      <button class="mtab on" id="tabBtn0" onclick="switchTab(0)">&#128202; Earnings History</button>
-      <button class="mtab" id="tabBtn1" onclick="switchTab(1)">&#128240; Latest News</button>
+    <div class="week-grid" id="wGrid"></div>
+  </div>
+  <div class="right-panel" id="rightPanel">
+    <div class="rp-prices">
+      <div class="price-box"><div class="price-sym">SPY</div><div class="price-val" id="pSPY">—</div><div class="price-chg flat" id="cSPY">—</div></div>
+      <div class="price-box"><div class="price-sym">QQQ</div><div class="price-val" id="pQQQ">—</div><div class="price-chg flat" id="cQQQ">—</div></div>
+      <div class="price-box"><div class="price-sym">BTC</div><div class="price-val" id="pBTC">—</div><div class="price-chg flat" id="cBTC">—</div></div>
     </div>
-    <div class="modal-body">
-      <div class="tab-pane on" id="tabHistory"></div>
-      <div class="tab-pane"    id="tabNews"></div>
+    <div id="feedPane" style="display:flex;flex-direction:column;flex:1">
+      <div class="feed-hd"><span>Earnings Feed</span><span class="feed-sub" id="feedSub"></span></div>
+      <div id="feedList"></div>
+    </div>
+    <div id="sdPane" style="display:none;flex:1;flex-direction:column" class="sd">
+      <div class="sd-head">
+        <div class="sd-top">
+          <div class="sd-logo" id="sdLogo"><span class="sd-logo-fb" id="sdFb"></span></div>
+          <div style="flex:1;min-width:0">
+            <div class="sd-ticker" id="sdTicker"></div>
+            <div class="sd-name" id="sdName"></div>
+            <div class="sd-when" id="sdWhen"></div>
+          </div>
+          <button class="sd-x" onclick="closeDetail()">&#10005;</button>
+        </div>
+        <div class="sd-metrics" id="sdMet"></div>
+      </div>
+      <div class="sd-tabs">
+        <div class="sd-tab on" data-tab="0" onclick="switchTab(0,this)">Earnings</div>
+        <div class="sd-tab" data-tab="1" onclick="switchTab(1,this)">News</div>
+      </div>
+      <div class="sd-pane on" id="paneEarnings"></div>
+      <div class="sd-pane" id="paneNews"></div>
     </div>
   </div>
 </div>
-
 <script>
-const DATA = __EARNINGS_JS__;
-const PAST_DATA = __PAST_EARNINGS_JS__;
-const HISTORY = __HISTORY_JS__;
-const NEWS = __NEWS_JS__;
-const META = __META_JS__;
+const DATA=__EARNINGS_JS__;
+const PAST_DATA=__PAST_EARNINGS_JS__;
+const HISTORY=__HISTORY_JS__;
+const NEWS=__NEWS_JS__;
+const META=__META_JS__;
+const BUILT_AT=__BUILT_AT__;
 
-const TODAY     = new Date();
-const TODAY_ISO = TODAY.toISOString().split('T')[0];
-let viewYear = TODAY.getFullYear(), viewMonth = TODAY.getMonth();
-let activeTime = 'all', searchQ = '', selectedDate = null;
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-function pmcap(s){if(!s)return 0;try{return parseFloat(s.replace(/[$,]/g,''));}catch{return 0;}}
-function fmtMcap(v){if(!v)return'–';if(v>=1e12)return'$'+(v/1e12).toFixed(2)+'T';if(v>=1e9)return'$'+(v/1e9).toFixed(1)+'B';if(v>=1e6)return'$'+(v/1e6).toFixed(0)+'M';return'–';}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function fmtDateLong(iso){
-  const t=new Date().toISOString().split('T')[0],y=new Date(Date.now()-86400000).toISOString().split('T')[0];
-  const d=new Date(iso+'T12:00:00'),full=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-  return iso===t?'Today — '+full:iso===y?'Yesterday — '+full:full;
+function fmtM(v){if(v==null||v===0)return'—';return v>=1000?'$'+(v/1000).toFixed(1)+'B':'$'+v.toFixed(0)+'M';}
+function fmtMcap(v){if(!v||v<1e6)return'—';if(v>=1e12)return'$'+(v/1e12).toFixed(2)+'T';if(v>=1e9)return'$'+(v/1e9).toFixed(1)+'B';return'$'+(v/1e6).toFixed(0)+'M';}
+function pmcap(s){if(!s)return 0;try{return parseFloat(s.replace(/[$,]/g,''));}catch{return 0;}}
+function qLbl(s){if(!s)return'';const p=s.split(' ');const m=p[0],y=p[1]||'';const qi={Jan:4,Feb:4,Mar:1,Apr:1,May:2,Jun:2,Jul:2,Aug:3,Sep:3,Oct:3,Nov:4,Dec:4};return'Q'+(qi[m]||'?')+' '+(y?y.slice(2):'');}
+
+const LOGO_COLORS=['#7c3aed','#2563eb','#16a34a','#dc2626','#d97706','#0891b2','#c026d3','#0f766e'];
+function lcolor(sym){let h=0;for(const c of (sym||''))h=(h*31+c.charCodeAt(0))&0xffffff;return LOGO_COLORS[Math.abs(h)%LOGO_COLORS.length];}
+function logoHtml(sym,sz){
+  sz=sz||44;
+  const src=`https://assets.parqet.com/logos/symbol/${encodeURIComponent(sym)}?format=png`;
+  const col=lcolor(sym);const fb=(sym||'??').slice(0,2).toUpperCase();
+  return `<div class="logo-img-wrap" style="width:${sz}px;height:${sz}px;border-radius:${Math.round(sz*.18)}px">
+    <img src="${esc(src)}" loading="lazy" onerror="this.style.display='none'">
+    <div class="logo-fb" style="background:${col};font-size:${Math.round(sz*.26)}px">${fb}</div>
+  </div>`;
 }
 
-// Pre-sort each day by market cap
-const SORTED = {};
-Object.keys(DATA).forEach(d => {
-  SORTED[d] = [...DATA[d]].sort((a,b) => pmcap(b.marketCap) - pmcap(a.marketCap));
-});
-const PAST_SORTED = {};
-Object.keys(PAST_DATA).forEach(d => {
-  PAST_SORTED[d] = [...PAST_DATA[d]].sort((a,b) => pmcap(b.marketCap) - pmcap(a.marketCap));
-});
+// Week state
+let wOff=0;
+const TODAY=new Date();
+const TODAY_ISO=TODAY.toISOString().split('T')[0];
+let selSym=null;
+const DAYS=['Mon','Tue','Wed','Thu','Fri'];
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-// ── filters ───────────────────────────────────────────────────────────────────
-function filterRows(rows){
-  let r = rows;
-  if(activeTime==='pre')   r = r.filter(x => x.time==='time-pre-market');
-  if(activeTime==='after') r = r.filter(x => x.time==='time-after-hours');
-  if(searchQ) r = r.filter(x => (x.symbol||'').toLowerCase().includes(searchQ) || (x.name||'').toLowerCase().includes(searchQ));
-  return r;
+function weekDates(off){
+  const d=new Date(TODAY);
+  const dow=d.getDay()||7;
+  d.setDate(d.getDate()-(dow-1)+off*7);
+  const out=[];
+  for(let i=0;i<5;i++){const x=new Date(d);x.setDate(d.getDate()+i);out.push(x.toISOString().split('T')[0]);}
+  return out;
 }
-function setTime(el,t){document.querySelectorAll('.filt').forEach(b=>b.classList.remove('on'));el.classList.add('on');activeTime=t;renderCal();if(selectedDate)openPanel(selectedDate);}
-function applySearch(){searchQ=(document.getElementById('searchBox').value||'').toLowerCase().trim();renderCal();if(selectedDate)openPanel(selectedDate);}
+function fmtWR(dates){
+  const a=new Date(dates[0]+'T12:00:00'),b=new Date(dates[4]+'T12:00:00');
+  if(a.getMonth()===b.getMonth())return MONTHS[a.getMonth()]+' '+a.getDate()+'–'+b.getDate()+', '+b.getFullYear();
+  return MONTHS[a.getMonth()]+' '+a.getDate()+' – '+MONTHS[b.getMonth()]+' '+b.getDate()+', '+b.getFullYear();
+}
+function changeWeek(d){wOff+=d;renderWeek();}
+function goNow(){wOff=0;renderWeek();}
 
-// ── calendar nav ──────────────────────────────────────────────────────────────
-function changeMonth(d){viewMonth+=d;if(viewMonth>11){viewMonth=0;viewYear++;}if(viewMonth<0){viewMonth=11;viewYear--;}renderCal();}
-function goToday(){viewYear=TODAY.getFullYear();viewMonth=TODAY.getMonth();renderCal();openPanel(TODAY_ISO);}
+function getRows(iso){return iso<=TODAY_ISO?(PAST_DATA[iso]||[]):(DATA[iso]||[]);}
 
-// ── calendar render ───────────────────────────────────────────────────────────
-function renderCal(){
-  const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
-  document.getElementById('monthTitle').textContent = months[viewMonth]+' '+viewYear;
-  const firstDay    = new Date(viewYear,viewMonth,1).getDay();
-  const daysInMonth = new Date(viewYear,viewMonth+1,0).getDate();
-  const daysInPrev  = new Date(viewYear,viewMonth,0).getDate();
-  let cells = [];
-  for(let i=firstDay-1;i>=0;i--) cells.push({day:daysInPrev-i,cur:false});
-  for(let d=1;d<=daysInMonth;d++) cells.push({day:d,cur:true});
-  for(let d=1;d<=42-cells.length;d++) cells.push({day:d,cur:false});
-
-  document.getElementById('calGrid').innerHTML = cells.map(({day,cur},idx) => {
-    const col = idx%7, isWknd = col===0||col===6;
-    let iso = '';
-    if(cur){ const mm=String(viewMonth+1).padStart(2,'0'), dd=String(day).padStart(2,'0'); iso=`${viewYear}-${mm}-${dd}`; }
-    const rows  = iso ? filterRows(SORTED[iso]||[]) : [];
-    const total = iso ? (SORTED[iso]||[]).length : 0;
-    const pastRows = (iso && iso < TODAY_ISO) ? (PAST_SORTED[iso]||[]) : [];
-    const isToday=iso===TODAY_ISO, isSel=iso===selectedDate, hasData=rows.length>0, hasPast=pastRows.length>0&&!hasData;
-    let cls='cell';
-    if(!cur)cls+=' other'; if(isToday)cls+=' today'; if(isWknd)cls+=' wknd'; if(isSel)cls+=' sel';
-    if(hasData)cls+=' has-data'; else if(hasPast)cls+=' has-past';
-
-    const chips = rows.slice(0,4).map(r => {
-      const big = pmcap(r.marketCap)>=50e9;
-      const tc  = big?'cm':r.time==='time-pre-market'?'cp':r.time==='time-after-hours'?'ca':'ct';
-      return `<div class="chip ${tc}" data-sym="${esc(r.symbol)}" title="${esc(r.name)}">${esc(r.symbol)}</div>`;
-    }).join('');
-    const more = rows.length>4 ? `<div class="more">+${rows.length-4} more</div>` : '';
-    const cnt  = total>0 ? `<div class="ccnt">${total}</div>` : '';
-    const pastChips = pastRows.slice(0,4).map(r => { const big=pmcap(r.marketCap)>=50e9; const tc=big?'cm':r.time==='time-pre-market'?'cp':r.time==='time-after-hours'?'ca':'cp'; return `<div class="chip ${tc}" data-sym="${esc(r.symbol)}" title="${esc(r.name||r.symbol)}">${esc(r.symbol)}</div>`; }).join('');
-    const pastMore  = pastRows.length>4 ? `<div class="more">+${pastRows.length-4} more</div>` : '';
-    const pastCnt   = pastRows.length>0 ? `<div class="ccnt" style="color:var(--faint)">${pastRows.length}</div>` : '';
-    const click = iso ? `data-iso="${iso}"` : '';
-    const showChips = hasData ? `<div class="chips">${chips}${more}</div>` : hasPast ? `<div class="chips">${pastChips}${pastMore}</div>` : '';
-    return `<div class="${cls}" ${click}><div class="cday">${day}</div>${iso&&(hasData||hasPast)?showChips:''} ${hasData?cnt:hasPast?pastCnt:''}</div>`;
-  }).join('');
-
-  // attach click via event delegation — no inline onclick with string data
-  document.getElementById('calGrid').onclick = e => {
-    // If a chip was clicked, open stock modal directly
-    const chip = e.target.closest('.chip[data-sym]');
-    if(chip){ openStock(chip.dataset.sym); return; }
-    const cell = e.target.closest('.cell.has-data, .cell.has-past');
-    if(!cell) return;
-    const iso = cell.dataset.iso;
-    if(!iso) return;
-    if(selectedDate===iso) closePanel(); else openPanel(iso);
-  };
+function renderWeek(){
+  const dates=weekDates(wOff);
+  document.getElementById('weekRange').textContent=fmtWR(dates);
+  const grid=document.getElementById('wGrid');
+  grid.innerHTML='';
+  dates.forEach((iso,i)=>{
+    const d=new Date(iso+'T12:00:00');
+    const isToday=iso===TODAY_ISO;
+    const isPast=iso<TODAY_ISO;
+    const rows=getRows(iso);
+    const col=document.createElement('div');
+    col.className='day-col'+(isToday?' today-col':'');
+    const hd=document.createElement('div');
+    hd.className='day-hd'+(isToday?' today-hd':'');
+    hd.innerHTML=DAYS[i]+' <span class="day-num'+(isToday?' today-num':'')+'">'+d.getDate()+'</span>';
+    col.appendChild(hd);
+    if(!rows.length){
+      const ne=document.createElement('div');ne.className='no-earn';ne.textContent='No Earnings';col.appendChild(ne);
+    } else if(isPast){
+      const sorted=[...rows].sort((a,b)=>pmcap(b.marketCap)-pmcap(a.marketCap));
+      col.appendChild(makeSection('&#9728; Reported',sorted));
+    } else {
+      const pre=rows.filter(r=>r.time==='time-pre-market');
+      const aft=rows.filter(r=>r.time==='time-after-hours');
+      const unk=rows.filter(r=>r.time!=='time-pre-market'&&r.time!=='time-after-hours');
+      if(pre.length)col.appendChild(makeSection('&#9728; Before Open',pre));
+      if(aft.length)col.appendChild(makeSection('&#9790; After Hours',aft));
+      if(unk.length&&!pre.length&&!aft.length)col.appendChild(makeSection('&#9679; Unconfirmed',unk));
+    }
+    grid.appendChild(col);
+  });
+  buildFeed(dates);
 }
 
-// ── day panel ─────────────────────────────────────────────────────────────────
-function openPanel(iso){
-  selectedDate = iso; renderCal();
-  const isPast = iso < TODAY_ISO;
-  const rows = isPast ? (PAST_SORTED[iso]||[]) : filterRows(SORTED[iso]||[]);
-  const all  = isPast ? (PAST_SORTED[iso]||[]) : (SORTED[iso]||[]);
-  document.getElementById('dpTitle').textContent = fmtDateLong(iso);
-  document.getElementById('dpSub').textContent   = rows.length + (rows.length!==all.length?' of '+all.length:'') + (isPast?' companies reported':' companies reporting');
-  document.querySelector('#dayPanel thead tr').innerHTML = isPast
-    ? '<th style="width:70px">Symbol</th><th>Company</th><th style="width:100px">When</th><th class="r" style="width:90px">Actual EPS</th><th class="r" style="width:90px">Est. EPS</th><th class="r" style="width:90px">Surprise</th>'
-    : '<th style="width:70px">Symbol</th><th>Company</th><th style="width:100px">When</th><th class="r" style="width:90px">EPS Est.</th><th class="r" style="width:90px">Last Yr</th><th class="r" style="width:100px">Market Cap</th><th style="width:80px">Quarter</th>';
+function makeSection(label,rows){
+  const sec=document.createElement('div');
+  const hd=document.createElement('div');hd.className='sec-hd';hd.innerHTML=label;sec.appendChild(hd);
+  const wrap=document.createElement('div');wrap.className='logos-wrap';
+  const show=rows.slice(0,12);
+  show.forEach(r=>{
+    const card=document.createElement('div');
+    card.className='logo-card'+(selSym===r.symbol?' sel':'');
+    card.innerHTML=logoHtml(r.symbol,42)+'<span class="logo-sym">'+esc(r.symbol)+'</span>';
+    card.onclick=()=>openStock(r.symbol);
+    wrap.appendChild(card);
+  });
+  if(rows.length>12){const m=document.createElement('div');m.className='more-lbl';m.textContent='+'+( rows.length-12)+' more';wrap.appendChild(m);}
+  sec.appendChild(wrap);
+  return sec;
+}
 
-  function getActual(sym) {
-    const h = HISTORY[sym]||[];
-    return h.find(q => { try { return new Date(q.dateReported).toISOString().split('T')[0]===iso; } catch{return false;} })||null;
+// Feed
+function buildFeed(weekDates){
+  const list=document.getElementById('feedList');
+  list.innerHTML='';
+  const items=[];
+  for(let d=new Date(TODAY),limit=0;limit<60&&items.length<25;d.setDate(d.getDate()-1),limit++){
+    const iso=d.toISOString().split('T')[0];
+    const rows=PAST_DATA[iso]||[];
+    rows.slice(0,10).forEach(r=>{
+      const hArr=HISTORY[r.symbol]||[];
+      const h=hArr.find(q=>{try{return new Date(q.dateReported+'T12:00').toISOString().split('T')[0]===iso;}catch{return false;}});
+      items.push({...r,iso,rev:h?.revActual});
+    });
   }
-
-  if(isPast){
-    document.getElementById('dpBody').innerHTML = !rows.length
-      ? '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--faint)">No data for this date.</td></tr>'
-      : rows.map(r => {
-          const act     = getActual(r.symbol);
-          const actEps  = act ? act.eps : '–';
-          const estEps  = act ? (act.consensusForecast||r.epsForecast||'–') : (r.epsForecast||'–');
-          const surp    = act ? parseFloat(act.percentageSurprise)||0 : null;
-          const surpCls = surp==null?'':surp>0?'beat':surp<0?'miss':'';
-          const surpTxt = surp==null?'–':(surp>0?'+':'')+surp.toFixed(1)+'%';
-          const tl = r.time==='time-pre-market'?'Pre-market':r.time==='time-after-hours'?'After hours':'–';
-          const tc = r.time==='time-pre-market'?'tbp':r.time==='time-after-hours'?'tba':'tbt';
-          return `<tr data-sym="${esc(r.symbol)}">
-            <td><span class="sym">${esc(r.symbol)}</span></td>
-            <td><div class="co"><a href="https://finance.yahoo.com/quote/${esc(r.symbol)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(r.name)}</a></div><div class="co-q">${esc(r.fiscalQuarterEnding||'')}</div></td>
-            <td><span class="tbadge ${tc}">${tl}</span></td>
-            <td class="r"><span class="eps">${actEps}</span></td>
-            <td class="r" style="color:var(--muted)">${estEps}</td>
-            <td class="r"><span class="${surpCls}">${surpTxt}</span></td>
-          </tr>`;
-        }).join('');
-  } else {
-    document.getElementById('dpBody').innerHTML = !rows.length
-      ? `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--faint)">No earnings match filter.</td></tr>`
-      : rows.map(r => {
-          const tl = r.time==='time-pre-market'?'Pre-market':r.time==='time-after-hours'?'After hours':'TBD';
-          const tc = r.time==='time-pre-market'?'tbp':r.time==='time-after-hours'?'tba':'tbt';
-          const mc = pmcap(r.marketCap);
-          return `<tr data-sym="${esc(r.symbol)}">
-            <td><span class="sym">${esc(r.symbol)}</span></td>
-            <td>
-              <div class="co"><a href="https://finance.yahoo.com/quote/${esc(r.symbol)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(r.name)}</a></div>
-              <div class="co-q">${esc(r.fiscalQuarterEnding||'')}</div>
-            </td>
-            <td><span class="tbadge ${tc}">${tl}</span></td>
-            <td class="r"><span class="eps">${esc(r.epsForecast||'\u2013')}</span></td>
-            <td class="r"><span style="color:var(--muted)">${esc(r.lastYearEPS||'\u2013')}</span></td>
-            <td class="r"><span class="mcap">${fmtMcap(mc)}</span></td>
-            <td style="font-size:11px;color:var(--faint)">${esc(r.fiscalQuarterEnding||'')}</td>
-          </tr>`;
-        }).join('');
-  }
-
-  document.getElementById('dpBody').onclick = e => {
-    const row = e.target.closest('tr[data-sym]');
-    if(!row) return;
-    const sym = row.dataset.sym;
-    if(sym) openStock(sym);
-  };
-
-  const panel = document.getElementById('dayPanel');
-  panel.classList.remove('hide');
-  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+  document.getElementById('feedSub').textContent=items.length?'Recent Results':'';
+  items.slice(0,20).forEach(item=>{
+    const eps=parseFloat((item.eps||'').replace(/[$,]/g,''));
+    const est=parseFloat((item.epsForecast||'').replace(/[$,]/g,''));
+    const surp=parseFloat(item.surprise||0);
+    const div=document.createElement('div');
+    div.className='feed-item';
+    div.onclick=()=>openStock(item.symbol);
+    let rows='';
+    if(!isNaN(eps)){
+      rows+=`<div class="fi-grid">
+        <span class="fi-lbl">EPS</span>
+        <span class="fi-est">${!isNaN(est)?'$'+est.toFixed(2)+' est':''}</span>
+        <span class="fi-act">$${eps.toFixed(2)}</span>
+        <span class="fi-surp ${surp>0?'up':'dn'}">${surp>0?'+':''}${surp.toFixed(1)}%</span>
+      </div>`;}
+    if(item.rev!=null){
+      rows+=`<div class="fi-grid">
+        <span class="fi-lbl">REV</span>
+        <span class="fi-est"></span>
+        <span class="fi-act" style="color:var(--blue)">${fmtM(item.rev)}</span>
+        <span class="fi-surp flat">—</span>
+      </div>`;}
+    div.innerHTML=`<div class="fi-head">
+      <div class="fi-logo"><img src="https://assets.parqet.com/logos/symbol/${encodeURIComponent(item.symbol)}?format=png" loading="lazy" onerror="this.style.display='none'">
+        <span class="fi-logo-fb" style="background:${lcolor(item.symbol)}">${(item.symbol||'??').slice(0,2)}</span></div>
+      <div><div class="fi-title">${esc(item.symbol)} ${item.fiscalQuarterEnding?qLbl(item.fiscalQuarterEnding.replace('/',' ')):'Earnings'}</div>
+        <div class="fi-sub">${esc(item.name||'')}</div></div>
+    </div>${rows}`;
+    list.appendChild(div);
+  });
+  if(!items.length)list.innerHTML='<div class="no-data">No recent data</div>';
 }
-function closePanel(){selectedDate=null;document.getElementById('dayPanel').classList.add('hide');renderCal();}
 
-// ── modal ─────────────────────────────────────────────────────────────────────
-function switchTab(idx){
-  document.querySelectorAll('.mtab').forEach((t,i)=>t.classList.toggle('on',i===idx));
-  document.querySelectorAll('.tab-pane').forEach((p,i)=>p.classList.toggle('on',i===idx));
+// Build merged history
+function mergeHist(sym){
+  const cached=HISTORY[sym]||[];
+  const seen=new Set(cached.map(q=>q.fiscalQtrEnd));
+  const extra=[];
+  Object.keys(PAST_DATA).sort().forEach(date=>{
+    const row=(PAST_DATA[date]||[]).find(r=>r.symbol===sym);
+    if(!row)return;
+    const eps=parseFloat((row.eps||'').replace(/[$,]/g,''));
+    const est=parseFloat((row.epsForecast||'').replace(/[$,]/g,''));
+    const surp=parseFloat(row.surprise);
+    if(isNaN(eps)&&isNaN(est))return;
+    const qk=(row.fiscalQuarterEnding||date).replace('/',' ');
+    if(seen.has(qk))return;
+    seen.add(qk);
+    extra.push({fiscalQtrEnd:qk,dateReported:date,eps:isNaN(eps)?null:eps,
+      consensusForecast:isNaN(est)?'':String(est),
+      percentageSurprise:isNaN(surp)?'':String(surp),revActual:null});
+  });
+  const all=[...cached,...extra];
+  const byQ={};
+  all.forEach(q=>{if(q.fiscalQtrEnd)byQ[q.fiscalQtrEnd]=q;});
+  return Object.values(byQ).sort((a,b)=>{
+    try{return new Date('01 '+b.fiscalQtrEnd)-new Date('01 '+a.fiscalQtrEnd);}catch{return 0;}
+  });
 }
-function handleOverlayClick(e){if(e.target===document.getElementById('modalOverlay'))closeModal();}
-function closeModal(){document.getElementById('modalOverlay').classList.add('hide');document.body.style.overflow='';}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
 
 function openStock(sym){
-  const m = META[sym] || {};
-  // For past tickers not in META, find name from PAST_DATA
-  let name = m.name || '';
+  selSym=sym;
+  document.querySelectorAll('.logo-card').forEach(c=>c.classList.toggle('sel',c.querySelector('.logo-sym')?.textContent===sym));
+  document.getElementById('feedPane').style.display='none';
+  const sd=document.getElementById('sdPane');
+  sd.style.display='flex';
+
+  const m=META[sym]||{};
+  // Find name from all sources
+  let name=m.name||'';
   if(!name){
-    for(const date of Object.keys(PAST_DATA)){
-      const row = (PAST_DATA[date]||[]).find(r => r.symbol===sym);
-      if(row && row.name){ name = row.name; break; }
+    for(const iso of Object.keys(PAST_DATA)){
+      const row=(PAST_DATA[iso]||[]).find(r=>r.symbol===sym);
+      if(row&&row.name){name=row.name;break;}
+    }
+    if(!name){
+      for(const iso of Object.keys(DATA)){
+        const row=(DATA[iso]||[]).find(r=>r.symbol===sym);
+        if(row&&row.name){name=row.name;break;}
+      }
     }
   }
-  document.getElementById('mTicker').textContent = sym;
-  document.getElementById('mName').textContent   = name;
-  document.getElementById('mMeta').textContent   = [m.date, m.when, m.eps ? 'Est. EPS '+m.eps : ''].filter(Boolean).join(' · ');
-  switchTab(0);
-  buildHistory(sym, m);
+
+  // Logo
+  const sdL=document.getElementById('sdLogo');
+  sdL.innerHTML=`<img src="https://assets.parqet.com/logos/symbol/${encodeURIComponent(sym)}?format=png" loading="lazy" onerror="this.style.display='none'" style="position:absolute;width:48px;height:48px;object-fit:contain">
+    <span class="sd-logo-fb" style="background:${lcolor(sym)}">${(sym||'??').slice(0,2)}</span>`;
+
+  document.getElementById('sdTicker').textContent=sym;
+  document.getElementById('sdName').textContent=name;
+
+  // Find upcoming or reported date
+  let whenStr='';
+  for(const iso of Object.keys(DATA)){
+    const row=(DATA[iso]||[]).find(r=>r.symbol===sym);
+    if(row){whenStr='Reports '+iso+(row.time==='time-pre-market'?' · Before Open':row.time==='time-after-hours'?' · After Hours':'');break;}
+  }
+  if(!whenStr){
+    for(const iso of Object.keys(PAST_DATA).sort().reverse()){
+      const row=(PAST_DATA[iso]||[]).find(r=>r.symbol===sym);
+      if(row){whenStr='Last reported '+iso;break;}
+    }
+  }
+  document.getElementById('sdWhen').textContent=whenStr;
+
+  const hist=mergeHist(sym);
+  const mc=pmcap((Object.values(PAST_DATA).flatMap(r=>r).find(r=>r.symbol===sym)||{}).marketCap||'')||
+            pmcap((Object.values(DATA).flatMap(r=>r).find(r=>r.symbol===sym)||{}).marketCap||'');
+  const revTTM=hist.slice(0,4).reduce((s,q)=>s+(q.revActual||0),0)||0;
+  const epsTTM=hist.slice(0,4).reduce((s,q)=>s+(parseFloat(q.eps)||0),0)||0;
+  const beatQ=hist.filter(q=>parseFloat(q.percentageSurprise)>0);
+  const totQ=hist.filter(q=>q.percentageSurprise!=='');
+  const beatPct=totQ.length?Math.round(beatQ.length/totQ.length*100):null;
+
+  document.getElementById('sdMet').innerHTML=`
+    <div class="met"><div class="met-lbl">Mkt Cap</div><div class="met-val">${fmtMcap(mc)}</div></div>
+    <div class="met"><div class="met-lbl">EPS TTM</div><div class="met-val">${epsTTM?'$'+epsTTM.toFixed(2):'—'}</div></div>
+    <div class="met"><div class="met-lbl">REV TTM</div><div class="met-val">${revTTM?fmtM(revTTM):'—'}</div></div>
+    <div class="met"><div class="met-lbl">Beat Rate</div><div class="met-val ${beatPct!=null?(beatPct>=50?'up':'dn'):''}">${beatPct!=null?beatPct+'%':'—'}</div></div>
+    <div class="met"><div class="met-lbl">Quarters</div><div class="met-val">${totQ.length||'—'}</div></div>
+    <div class="met"><div class="met-lbl">EPS Est</div><div class="met-val">${m.eps?'$'+m.eps:'—'}</div></div>`;
+
+  switchTab(0,document.querySelector('.sd-tab'));
+  buildEarnings(sym,hist,m);
   buildNews(sym);
-  document.getElementById('modalOverlay').classList.remove('hide');
-  document.body.style.overflow = 'hidden';
 }
 
-function getPastHistory(sym){
-  // Build history from PAST_DATA for tickers not in HISTORY
-  const entries = [];
-  Object.keys(PAST_DATA).sort().forEach(date => {
-    const row = (PAST_DATA[date]||[]).find(r => r.symbol===sym);
-    if(!row) return;
-    const eps = parseFloat((row.eps||'').replace(/[$,]/g,''));
-    const est = parseFloat((row.epsForecast||'').replace(/[$,]/g,''));
-    const surp = parseFloat(row.surprise);
-    if(isNaN(eps) && isNaN(est)) return;
-    entries.push({
-      fiscalQtrEnd: (row.fiscalQuarterEnding||date).replace('/',' '),
-      dateReported: date,
-      eps: isNaN(eps)?null:eps,
-      consensusForecast: isNaN(est)?'':String(est),
-      percentageSurprise: isNaN(surp)?'':String(surp),
-      revActual: null,
-    });
-  });
-  return entries.reverse();
-}
-
-function mergeHistory(a, b){
-  // Merge two history arrays, deduplicate by fiscalQtrEnd, sort newest first
-  const map = {};
-  [...b, ...a].forEach(q => { if(q.fiscalQtrEnd) map[q.fiscalQtrEnd] = q; });
-  return Object.values(map).sort((x,y) => {
-    try { return new Date('01 '+y.fiscalQtrEnd) - new Date('01 '+x.fiscalQtrEnd); } catch{ return 0; }
-  });
-}
-
-function buildHistory(sym, m){
-  // Always merge HISTORY (4 quarters, has revActual) with PAST_DATA (3 years of EPS)
-  const hist = mergeHistory(HISTORY[sym]||[], getPastHistory(sym));
-  let html = '';
-
-  // Upcoming card
-  if(m.date || m.eps){
-    html += `<div class="upcoming-card">
-      <div><div class="uc-label">Next Report</div><div class="uc-val">${esc(m.date||'')}${m.when?' · '+esc(m.when):''}</div></div>
-      ${m.eps?`<div style="text-align:right"><div class="uc-label">EPS Estimate</div><div class="uc-big">${esc(m.eps)}</div></div>`:''}
+function buildEarnings(sym,hist,m){
+  const pane=document.getElementById('paneEarnings');
+  let html='';
+  if(m.date||m.eps){
+    html+=`<div class="uc-banner">
+      <div><div class="uc-l">Next Report</div><div class="uc-v">${esc(m.date||'')}${m.when?' · '+esc(m.when):''}</div></div>
+      ${m.eps?`<div style="text-align:right"><div class="uc-l">EPS Estimate</div><div class="uc-big">$${esc(m.eps)}</div></div>`:''}
     </div>`;
   }
+  if(!hist.length){pane.innerHTML=html+'<div class="no-data">No earnings history</div>';return;}
+  const display=hist.slice(0,12);
+  const hasRev=display.some(q=>q.revActual!=null&&q.revActual>0);
+  const beats=display.filter(q=>parseFloat(q.percentageSurprise)>0).length;
+  const tot=display.filter(q=>q.percentageSurprise!=='').length;
 
-  if(!hist||!hist.length){
-    html += `<div class="no-data">No earnings history available.<br>
-      <a class="ext-link" href="https://www.nasdaq.com/market-activity/stocks/${encodeURIComponent(sym.toLowerCase())}/earnings" target="_blank" rel="noopener">View on NASDAQ ↗</a></div>`;
-    document.getElementById('tabHistory').innerHTML = html;
-    return;
-  }
-
-  // Chart — EPS (est + act) and Revenue actual, independent scales
-  const hasRev = hist.some(q => q.revActual != null);
-  const maxEps = Math.max(...hist.flatMap(q=>[Math.abs(parseFloat(q.eps)||0), Math.abs(parseFloat(q.consensusForecast)||0)]), 0.01);
-  const maxRev = hasRev ? Math.max(...hist.map(q => q.revActual||0), 0.01) : 0.01;
-
-  const bars = hist.map(q => {
-    const actual  = parseFloat(q.eps)||0;
-    const est     = parseFloat(q.consensusForecast)||0;
-    const surprise= parseFloat(q.percentageSurprise)||0;
-    const actCls  = surprise>0?'bar-beat':surprise<0?'bar-miss':'bar-neu';
-    const hEst = Math.round(Math.abs(est)/maxEps*58);
-    const hAct = Math.round(Math.abs(actual)/maxEps*58);
-    const hRev = hasRev && q.revActual ? Math.round(q.revActual/maxRev*58) : 0;
-    const revB = hasRev ? `<div class="bar bar-rev" style="height:${Math.max(hRev,3)}px" title="Revenue: $${q.revActual!=null?(q.revActual>=1000?(q.revActual/1000).toFixed(1)+'B':q.revActual.toFixed(0)+'M'):'N/A'}"></div>` : '';
-    return `<div class="bar-grp">
-      <div class="bars">
-        <div class="bar bar-est" style="height:${Math.max(hEst,3)}px" title="EPS Est: $${est}"></div>
-        <div class="bar ${actCls}" style="height:${Math.max(hAct,3)}px" title="EPS Act: $${actual}"></div>
-        ${revB}
-      </div>
-      <div class="bar-q">${esc(q.fiscalQtrEnd||'').replace(' ','<br>')}</div>
-    </div>`;
-  }).join('');
-
-  // Table
-  const trows = hist.map(q => {
-    const s = parseFloat(q.percentageSurprise)||0;
-    const cls = s>0?'beat':s<0?'miss':'';
-    const sign = s>0?'+':'';
-    const revFmt = q.revActual!=null?(q.revActual>=1000?'$'+(q.revActual/1000).toFixed(2)+'B':'$'+q.revActual.toFixed(0)+'M'):'–';
-    return `<tr>
-      <td>${esc(q.fiscalQtrEnd||'')}</td>
-      <td>${esc(q.dateReported||'')}</td>
-      <td class="r" style="font-weight:500">${q.eps!=null?q.eps:'–'}</td>
-      <td class="r" style="color:var(--muted)">${q.consensusForecast||'–'}</td>
-      <td class="r"><span class="${cls}">${sign}${s.toFixed(1)}%</span></td>
-      <td class="r" style="color:var(--accent)">${revFmt}</td>
-    </tr>`;
-  }).join('');
-
-  html += `
-    <div class="sec-title">Earnings History — last ${hist.length} quarters</div>
+  html+=`<div class="chart-wrap">
     <div class="chart-legend">
-      <div class="cl-item"><div class="cl-dot" style="background:var(--border-strong)"></div>EPS Est</div>
-      <div class="cl-item"><div class="cl-dot bar-beat"></div>EPS Beat</div>
-      <div class="cl-item"><div class="cl-dot bar-miss"></div>EPS Miss</div>
-      ${hasRev?'<div class="cl-item"><div class="cl-dot bar-rev"></div>Revenue</div>':''}
+      ${hasRev?'<div class="leg"><div class="leg-dot" style="background:var(--blue)"></div>Revenue</div>':''}
+      <div class="leg"><div class="leg-dot" style="background:var(--green)"></div>EPS Beat</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--red)"></div>EPS Miss</div>
+      <div class="leg"><div class="leg-dot" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3)"></div>Est</div>
     </div>
-    <div class="hist-chart">${bars}</div>
-    <table class="hist-table">
-      <thead><tr><th>Quarter</th><th>Reported</th><th class="r">EPS Act</th><th class="r">EPS Est</th><th class="r">Surprise</th><th class="r">Revenue</th></tr></thead>
-      <tbody>${trows}</tbody>
-    </table>
-    <a class="ext-link" href="https://www.nasdaq.com/market-activity/stocks/${encodeURIComponent(sym.toLowerCase())}/earnings" target="_blank" rel="noopener">Full history on NASDAQ ↗</a>`;
+    <div class="chart-canvas-wrap"><canvas class="ec" id="ec_${esc(sym)}" width="320" height="155"></canvas></div>
+  </div>`;
+  if(tot)html+=`<div class="hist-wrap"><div class="beat-stat">EPS beat estimates <strong>${beats}</strong> of <strong>${tot}</strong> quarters (${Math.round(beats/tot*100)}%)</div>`;
+  else html+='<div class="hist-wrap">';
+  html+=`<table class="ht"><thead><tr>
+    <th>Quarter</th><th class="r">EPS</th><th class="r">Est</th><th class="r">Surprise</th>
+    ${hasRev?'<th class="r">Revenue</th>':''}
+  </tr></thead><tbody>${display.map(q=>{
+    const s=parseFloat(q.percentageSurprise)||0;
+    const cls=q.percentageSurprise!==''?(s>0?'beat':'miss'):'';
+    return`<tr><td>${esc(q.fiscalQtrEnd||'')}</td>
+      <td class="r" style="font-weight:600">${q.eps!=null?'$'+parseFloat(q.eps).toFixed(2):'—'}</td>
+      <td class="r" style="color:var(--muted)">${q.consensusForecast?'$'+parseFloat(q.consensusForecast).toFixed(2):'—'}</td>
+      <td class="r"><span class="${cls}">${q.percentageSurprise!==''?(s>0?'+':'')+s.toFixed(1)+'%':'—'}</span></td>
+      ${hasRev?`<td class="r" style="color:var(--blue)">${fmtM(q.revActual)}</td>`:''}
+    </tr>`;}).join('')}</tbody></table></div>`;
+  pane.innerHTML=html;
+  setTimeout(()=>drawChart(sym,display,hasRev),60);
+}
 
-  document.getElementById('tabHistory').innerHTML = html;
+function drawChart(sym,data,hasRev){
+  const canvas=document.getElementById('ec_'+sym);
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const dpr=window.devicePixelRatio||1;
+  const W=canvas.offsetWidth||320,H=155;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  ctx.scale(dpr,dpr);
+  const pts=[...data].reverse();
+  const N=pts.length;if(!N)return;
+  const PAD={t:8,r:8,b:24,l:hasRev?44:4};
+  const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
+  const gW=cW/N;
+  const bW=Math.max(Math.floor(gW*.65),4);
+  const maxRev=hasRev?Math.max(...pts.map(q=>q.revActual||0),1):0;
+  const maxEps=Math.max(...pts.flatMap(q=>[Math.abs(parseFloat(q.eps)||0),Math.abs(parseFloat(q.consensusForecast)||0)]),0.01);
+  // Grid lines
+  for(let i=0;i<=4;i++){
+    const y=PAD.t+cH*(1-i/4);
+    ctx.strokeStyle='rgba(255,255,255,.05)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+    if(hasRev){
+      ctx.fillStyle='rgba(255,255,255,.28)';ctx.font='8px sans-serif';ctx.textAlign='right';
+      const v=maxRev*i/4;
+      ctx.fillText(v>=1000?(v/1000).toFixed(0)+'B':v.toFixed(0)+'M',PAD.l-3,y+3);
+    }
+  }
+  pts.forEach((q,i)=>{
+    const cx=PAD.l+i*gW+gW/2;
+    const eps=parseFloat(q.eps)||0;
+    const est=parseFloat(q.consensusForecast)||0;
+    const surp=parseFloat(q.percentageSurprise)||0;
+    const rev=q.revActual||0;
+    // Rev bar
+    if(hasRev&&rev>0){
+      const rh=Math.max((rev/maxRev)*cH,2);
+      ctx.fillStyle='rgba(59,130,246,.55)';
+      ctx.fillRect(cx-bW/2,PAD.t+cH-rh,bW,rh);
+    }
+    // EPS est outline
+    if(est&&maxEps>0){
+      const eh=Math.max((Math.abs(est)/maxEps)*cH*.44,2);
+      const ew=Math.max(bW*.38,3);
+      ctx.strokeStyle='rgba(255,255,255,.3)';ctx.lineWidth=1;
+      ctx.strokeRect(cx-ew/2,PAD.t+cH-eh,ew,eh);
+    }
+    // EPS actual bar
+    if(eps&&maxEps>0){
+      const eh=Math.max((Math.abs(eps)/maxEps)*cH*.44,2);
+      const ew=Math.max(bW*.36,3);
+      ctx.fillStyle=surp>0?'rgba(34,197,94,.9)':'rgba(239,68,68,.85)';
+      ctx.fillRect(cx-ew/2,PAD.t+cH-eh,ew,eh);
+    }
+    // Label
+    const lbl=qLbl(q.fiscalQtrEnd||'');
+    if(lbl&&(i===0||i===N-1||N<=8||(i%(Math.ceil(N/6))===0))){
+      ctx.fillStyle='rgba(255,255,255,.3)';ctx.font='8px sans-serif';ctx.textAlign='center';
+      ctx.fillText(lbl,cx,H-5);
+    }
+  });
 }
 
 function buildNews(sym){
-  const articles = NEWS[sym];
-  if(!articles||!articles.length){
-    document.getElementById('tabNews').innerHTML = `<div class="no-data">No recent news cached for ${esc(sym)}.<br>
-      <a class="ext-link" href="https://www.nasdaq.com/feed/rssoutbound?symbol=${encodeURIComponent(sym)}" target="_blank" rel="noopener">View news on NASDAQ ↗</a></div>`;
-    return;
-  }
-  const html = articles.map(a => `<div class="news-item">
-    <div class="news-title"><a href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.title)}</a></div>
-    ${a.desc ? `<div class="news-desc">${esc(a.desc)}</div>` : ''}
-    <div class="news-meta">${esc(a.date)} · ${esc(a.time)}</div>
-  </div>`).join('');
-  document.getElementById('tabNews').innerHTML = `<div class="news-list">${html}</div>
-    <a class="ext-link" href="https://www.nasdaq.com/feed/rssoutbound?symbol=${encodeURIComponent(sym)}" target="_blank" rel="noopener">More news on NASDAQ ↗</a>`;
+  const pane=document.getElementById('paneNews');
+  const arts=NEWS[sym];
+  if(!arts||!arts.length){pane.innerHTML=`<div class="no-data">No news for ${esc(sym)}</div>`;return;}
+  pane.innerHTML='<div class="news-wrap">'+arts.map(a=>`
+    <div class="ni"><a href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.title)}</a>
+    <div class="ni-meta">${esc(a.date)} · ${esc(a.time)}</div></div>`).join('')+'</div>';
 }
 
-const BUILT_AT = __BUILT_AT__;
-// ── init ──────────────────────────────────────────────────────────────────────
-document.getElementById("builtAt").textContent = "Updated " + BUILT_AT;
-renderCal();
-if(SORTED[TODAY_ISO] && SORTED[TODAY_ISO].length) openPanel(TODAY_ISO);
+function closeDetail(){
+  selSym=null;
+  document.getElementById('sdPane').style.display='none';
+  document.getElementById('feedPane').style.display='flex';
+  document.querySelectorAll('.logo-card.sel').forEach(c=>c.classList.remove('sel'));
+}
+
+function switchTab(idx,el){
+  document.querySelectorAll('.sd-tab').forEach((t,i)=>t.classList.toggle('on',i===idx));
+  document.querySelectorAll('.sd-pane').forEach((p,i)=>p.classList.toggle('on',i===idx));
+}
+
+function doSearch(q){
+  q=(q||'').trim().toLowerCase();
+  if(!q)return;
+  const found=new Set();
+  [...Object.values(DATA),...Object.values(PAST_DATA)].forEach(rows=>rows.forEach(r=>{
+    if(r.symbol&&r.symbol.toLowerCase()===q)found.add(r.symbol);
+  }));
+  if(found.size===1)openStock([...found][0]);
+  else if(found.size===0){
+    [...Object.values(DATA),...Object.values(PAST_DATA)].forEach(rows=>rows.forEach(r=>{
+      if(r.symbol&&r.symbol.toLowerCase().startsWith(q))found.add(r.symbol);
+    }));
+    if(found.size===1)openStock([...found][0]);
+  }
+}
+
+// Market status
+function setMkt(){
+  const now=new Date();
+  const et=new Date(now.toLocaleString('en-US',{timeZone:'America/New_York'}));
+  const h=et.getHours(),min=et.getMinutes(),dow=et.getDay();
+  const open=dow>=1&&dow<=5&&(h>9||(h===9&&min>=30))&&h<16;
+  const dot=document.getElementById('mktDot');
+  if(dot){dot.className='market-dot'+(open?' open':'');}
+  const txt=document.getElementById('mktTxt');
+  if(txt){txt.textContent=open?'Market Open':'Market Closed';}
+}
+
+// Prices
+async function fetchETF(sym,pId,cId){
+  try{
+    const r=await fetch(`https://api.nasdaq.com/api/quote/${sym}/info?assetclass=etf`,
+      {headers:{Accept:'application/json','User-Agent':'Mozilla/5.0'}});
+    const d=await r.json();
+    const p=d?.data?.primaryData;
+    if(!p)return;
+    const up=!(p.netChange||'').startsWith('-');
+    document.getElementById(pId).textContent=p.lastSalePrice||'—';
+    const el=document.getElementById(cId);
+    el.textContent=(p.netChange||'')+(p.percentageChange?' ('+p.percentageChange+')':'');
+    el.className='price-chg '+(up?'up':'dn');
+  }catch{}
+}
+
+document.getElementById('builtLbl').textContent='Updated '+BUILT_AT;
+setMkt();
+renderWeek();
+fetchETF('SPY','pSPY','cSPY');
+fetchETF('QQQ','pQQQ','cQQQ');
+fetch('https://api.nasdaq.com/api/quote/BTCUSD/info?assetclass=cryptocurrency',
+  {headers:{Accept:'application/json'}}).then(r=>r.json()).then(d=>{
+  const p=d?.data?.primaryData;if(!p)return;
+  const up=!(p.netChange||'').startsWith('-');
+  document.getElementById('pBTC').textContent=p.lastSalePrice||'—';
+  const el=document.getElementById('cBTC');
+  el.textContent=p.netChange||'';el.className='price-chg '+(up?'up':'dn');
+}).catch(()=>{});
 </script>
 </body>
 </html>
