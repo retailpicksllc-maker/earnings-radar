@@ -109,10 +109,10 @@ for mc, sym in sorted(all_rows_flat, reverse=True):
 past_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
                   for rows in past_earnings.values() for r in rows]
 for mc, sym in sorted(past_rows_flat, reverse=True):
-    if sym and sym not in seen and mc > 5e9:
+    if sym and sym not in seen and mc > 10e9:
         seen.add(sym)
         top_tickers.append(sym)
-    if len(top_tickers) >= 350:
+    if len(top_tickers) >= 300:
         break
 
 # Load cached history (accumulates 3+ years over time)
@@ -236,11 +236,12 @@ def fetch_revenue_sec(ticker):
         return ticker, {}
     best_qtrs = {}
     best_latest = None
+    RECENT = datetime(2024, 1, 1)
     for field in REV_FIELDS:
         try:
             url = f'https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/us-gaap/{field}.json'
             req = urllib.request.Request(url, headers={'User-Agent': 'retail.picksllc@gmail.com'})
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with urllib.request.urlopen(req, timeout=8) as r:
                 data = json.loads(r.read())
             entries = data.get('units', {}).get('USD', [])
             qtrs = {}
@@ -260,6 +261,8 @@ def fetch_revenue_sec(ticker):
                 if best_latest is None or latest > best_latest:
                     best_latest = latest
                     best_qtrs = qtrs
+                if latest >= RECENT:
+                    break  # Recent data found — stop trying more fields
         except:
             continue
     return ticker, best_qtrs
@@ -287,7 +290,7 @@ for t in tickers_needing_rev:
     revenue_data.pop(t, None)
     revenue_cache.pop(t, None)
 with ThreadPoolExecutor(max_workers=20) as ex:
-    for ticker, qtrs in ex.map(fetch_revenue_sec, top_tickers, timeout=120):
+    for ticker, qtrs in ex.map(fetch_revenue_sec, top_tickers, timeout=200):
         if qtrs:
             revenue_data[ticker] = qtrs
 
