@@ -435,8 +435,18 @@ function getPastHistory(sym){
   return entries.reverse();
 }
 
+function mergeHistory(a, b){
+  // Merge two history arrays, deduplicate by fiscalQtrEnd, sort newest first
+  const map = {};
+  [...b, ...a].forEach(q => { if(q.fiscalQtrEnd) map[q.fiscalQtrEnd] = q; });
+  return Object.values(map).sort((x,y) => {
+    try { return new Date('01 '+y.fiscalQtrEnd) - new Date('01 '+x.fiscalQtrEnd); } catch{ return 0; }
+  });
+}
+
 function buildHistory(sym, m){
-  const hist = HISTORY[sym] && HISTORY[sym].length ? HISTORY[sym] : getPastHistory(sym);
+  // Always merge HISTORY (4 quarters, has revActual) with PAST_DATA (3 years of EPS)
+  const hist = mergeHistory(HISTORY[sym]||[], getPastHistory(sym));
   let html = '';
 
   // Upcoming card
