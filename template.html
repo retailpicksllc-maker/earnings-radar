@@ -50,7 +50,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .cell.wknd{background:#fdfcfa}
 .cell.sel{box-shadow:inset 0 0 0 2px var(--accent)}
 .cell.has-past{cursor:pointer}.cell.has-past:hover{background:#faf9f7}
-.cp-past{background:#f0eeea;color:var(--faint);font-size:10px;font-weight:600;padding:2px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cday{width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:4px;flex-shrink:0}
 .chips{display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden}
 .chip{font-size:10px;font-weight:600;padding:2px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -291,7 +290,7 @@ function renderCal(){
     }).join('');
     const more = rows.length>4 ? `<div class="more">+${rows.length-4} more</div>` : '';
     const cnt  = total>0 ? `<div class="ccnt">${total}</div>` : '';
-    const pastChips = pastRows.slice(0,4).map(r => `<div class="cp-past" title="${esc(r.name||r.symbol)}">${esc(r.symbol)}</div>`).join('');
+    const pastChips = pastRows.slice(0,4).map(r => { const big=pmcap(r.marketCap)>=50e9; const tc=big?'cm':r.time==='time-pre-market'?'cp':r.time==='time-after-hours'?'ca':'ct'; return `<div class="chip ${tc}" title="${esc(r.name||r.symbol)}">${esc(r.symbol)}</div>`; }).join('');
     const pastMore  = pastRows.length>4 ? `<div class="more">+${pastRows.length-4} more</div>` : '';
     const pastCnt   = pastRows.length>0 ? `<div class="ccnt" style="color:var(--faint)">${pastRows.length}</div>` : '';
     const click = iso ? `data-iso="${iso}"` : '';
