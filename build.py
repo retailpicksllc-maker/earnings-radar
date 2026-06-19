@@ -105,6 +105,16 @@ for mc, sym in sorted(all_rows_flat, reverse=True):
     if len(top_tickers) >= 200:
         break
 
+# Add top past tickers by market cap (for revenue lookup on past calendar dates)
+past_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
+                  for rows in past_earnings.values() for r in rows]
+for mc, sym in sorted(past_rows_flat, reverse=True):
+    if sym and sym not in seen and mc > 5e9:
+        seen.add(sym)
+        top_tickers.append(sym)
+    if len(top_tickers) >= 350:
+        break
+
 # Load cached history (accumulates 3+ years over time)
 CACHE_FILE = 'data/history_cache.json'
 cached_history = {}
@@ -212,6 +222,7 @@ REV_FIELDS = [
     'RevenueFromContractWithCustomerExcludingAssessedTax',
     'Revenues',
     'RevenuesNetOfInterestExpense',
+    'NoninterestIncome',
     'SalesRevenueNet',
     'RevenueFromContractWithCustomerIncludingAssessedTax',
     'OtherIncome',
