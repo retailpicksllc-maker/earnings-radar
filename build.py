@@ -247,9 +247,28 @@ def fetch_revenue_sec(ticker):
             continue
     return ticker, {}
 
-tickers_needing_rev = [t for t in top_tickers if t not in revenue_cache]
-print(f"Fetching revenue for {len(tickers_needing_rev)} tickers from SEC EDGAR...")
+def rev_is_stale(ticker):
+    """True if revenue cache is missing or more than 6 months behind history."""    if ticker not in revenue_cache or not revenue_cache[ticker]:
+        return True
+    hist_quarters = history.get(ticker, [])
+    if not hist_quarters:
+        return False
+    try:
+        latest_rev  = max(datetime.strptime(k, '%b %Y') for k in revenue_cache[ticker])
+        latest_hist = max(datetime.strptime(q['fiscalQtrEnd'], '%b %Y')
+                         for q in hist_quarters if q.get('fiscalQtrEnd'))
+        return ((latest_hist.year - latest_rev.year)*12 +
+                (latest_hist.month - latest_rev.month)) > 6
+    except:
+        return False
+
+tickers_needing_rev = [t for t in top_tickers if rev_is_stale(t)]
+print(f"Fetching revenue for {len(tickers_needing_rev)} tickers from SEC EDGAR (stale or missing)...")
 revenue_data = dict(revenue_cache)
+# Clear stale entries so fetch_revenue_sec doesn't skip them
+for t in tickers_needing_rev:
+    revenue_data.pop(t, None)
+    revenue_cache.pop(t, None)
 with ThreadPoolExecutor(max_workers=20) as ex:
     for ticker, qtrs in ex.map(fetch_revenue_sec, top_tickers, timeout=120):
         if qtrs:
