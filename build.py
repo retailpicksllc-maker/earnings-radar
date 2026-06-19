@@ -8,13 +8,14 @@ Run by GitHub Actions every hour on trading days.
 import urllib.request
 import xml.etree.ElementTree as ET
 import json
+import os
 import re
 import html as html_mod
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from concurrent.futures import ThreadPoolExecutor
 
 EASTERN = ZoneInfo("America/New_York")
-from concurrent.futures import ThreadPoolExecutor
 
 print("Starting build...")
 
@@ -34,7 +35,6 @@ def fetch_earnings_day(date_str):
         return date_str, []
 
 today = datetime.now(timezone.utc)
-# Skip weekends
 trading_days = []
 d = today
 while len(trading_days) < 40:
@@ -53,7 +53,7 @@ with ThreadPoolExecutor(max_workers=10) as ex:
 total_companies = sum(len(v) for v in earnings.values())
 print(f"  Got {total_companies} companies across {len(earnings)} days")
 
-# ── 2. Earnings history (top 200 by market cap) ───────────────────────────────
+# ── 2. Earnings history ───────────────────────────────────────────────────────
 def parse_mcap(s):
     if not s: return 0
     try: return float(s.replace('$', '').replace(',', ''))
@@ -70,28 +70,69 @@ for mc, sym in sorted(all_rows_flat, reverse=True):
     if len(top_tickers) >= 200:
         break
 
-def fetch_history(ticker):
+# Load cached history (accumulates 3+ years over time)
+CACHE_FILE = 'data/history_cache.json'
+cached_history = {}
+if os.path.exists(CACHE_FILE):
+    try:
+        with open(CACHE_FILE) as f:
+            cached_history = json.load(f)
+        print(f"  Loaded cache: {len(cached_history)} tickers")
+    except:
+        pass
+
+def fetch_history_yf(ticker):
+    """yfinance — gives full 3-year history; blocked on GitHub Actions by Yahoo."""
     try:
         import yfinance as yf
-        from datetime import timezone
         t = yf.Ticker(ticker)
-        ed = t.get_earnings_dates(limit=16)
+        ed = t.get_earnings_dates(limit=20)
         if ed is None or ed.empty:
-            return ticker, []
-        now = __import__('datetime').datetime.now(__import__('datetime').timezone.utc)
+            return []
+        now = datetime.now(timezone.utc)
         past = ed[ed.index < now].dropna(subset=['Reported EPS'])
         rows = []
         for dt, row in past.iterrows():
             rows.append({
-                'fiscalQtrEnd': dt.strftime('%b %Y'),
-                'dateReported': dt.strftime('%-m/%-d/%Y'),
-                'eps': round(float(row['Reported EPS']), 2),
+                'fiscalQtrEnd':      dt.strftime('%b %Y'),
+                'dateReported':      dt.strftime('%-m/%-d/%Y'),
+                'eps':               round(float(row['Reported EPS']), 2),
                 'consensusForecast': str(round(float(row['EPS Estimate']), 2)) if row['EPS Estimate'] == row['EPS Estimate'] else '',
-                'percentageSurprise': str(round(float(row['Surprise(%)']) , 2)) if row['Surprise(%)'] == row['Surprise(%)'] else ''
+                'percentageSurprise':str(round(float(row['Surprise(%)']), 2))  if row['Surprise(%)']  == row['Surprise(%)']  else '',
             })
-        return ticker, rows
+        return rows
     except:
-        return ticker, []
+        return []
+
+def fetch_history_nasdaq(ticker):
+    """NASDAQ API — always works from GitHub Actions; returns ~4 most recent quarters."""
+    url = f'https://api.nasdaq.com/api/company/{ticker.lower()}/earnings-surprise'
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            d = json.loads(r.read())
+        return d.get('data', {}).get('earningsSurpriseTable', {}).get('rows', []) or []
+    except:
+        return []
+
+def merge_history(fresh, cached):
+    """Merge fresh rows with cache, deduplicate by quarter, sort newest first."""
+    if not fresh and not cached:
+        return []
+    by_quarter = {r['fiscalQtrEnd']: r for r in cached}
+    for r in fresh:
+        by_quarter[r['fiscalQtrEnd']] = r  # fresh overwrites cached
+    def sort_key(r):
+        try: return datetime.strptime(r['fiscalQtrEnd'], '%b %Y')
+        except: return datetime.min
+    return sorted(by_quarter.values(), key=sort_key, reverse=True)
+
+def fetch_history(ticker):
+    rows = fetch_history_yf(ticker)
+    if not rows:
+        rows = fetch_history_nasdaq(ticker)
+    merged = merge_history(rows, cached_history.get(ticker, []))
+    return ticker, merged
 
 print(f"Fetching history for {len(top_tickers)} tickers...")
 history = {}
@@ -101,7 +142,13 @@ with ThreadPoolExecutor(max_workers=10) as ex:
             history[ticker] = rows
 print(f"  Got history for {len(history)} tickers")
 
-# ── 3. News (top 200 tickers) ─────────────────────────────────────────────────
+# Save updated cache back to repo so history accumulates over time
+os.makedirs('data', exist_ok=True)
+with open(CACHE_FILE, 'w') as f:
+    json.dump(history, f)
+print(f"  Cache saved: {len(history)} tickers")
+
+# ── 3. News ───────────────────────────────────────────────────────────────────
 def strip_html(t):
     t = re.sub(r'<!\[CDATA\[(.*?)\]\]>', r'\1', t or '', flags=re.DOTALL)
     return re.sub(r'<[^>]+>', '', t).strip()
@@ -146,14 +193,14 @@ with ThreadPoolExecutor(max_workers=30) as ex:
             news[ticker] = items
 print(f"  Got news for {len(news)} tickers")
 
-# ── 4. Build stock meta lookup ────────────────────────────────────────────────
+# ── 4. Stock meta lookup ──────────────────────────────────────────────────────
 stock_meta = {}
 for date_str, rows in earnings.items():
     for r in rows:
         sym = r.get('symbol', '')
         if sym:
-            tl = ('Pre-market'   if r.get('time') == 'time-pre-market'  else
-                  'After hours'  if r.get('time') == 'time-after-hours' else 'TBD')
+            tl = ('Pre-market'  if r.get('time') == 'time-pre-market'  else
+                  'After hours' if r.get('time') == 'time-after-hours' else 'TBD')
             stock_meta[sym] = {
                 'name': r.get('name', ''),
                 'when': tl,
@@ -162,24 +209,18 @@ for date_str, rows in earnings.items():
                 'date': date_str,
             }
 
-# ── 5. Serialize ──────────────────────────────────────────────────────────────
+# ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
 
-earnings_js = json.dumps(earnings, ensure_ascii=False)
-history_js  = json.dumps(history,  ensure_ascii=False)
-news_js     = json.dumps(news,     ensure_ascii=False)
-meta_js     = json.dumps(stock_meta, ensure_ascii=False)
-built_js    = json.dumps(built_at)
-
-# ── 6. Read HTML template and inject data ─────────────────────────────────────
 with open('template.html', 'r') as f:
     template = f.read()
 
-output = template.replace('__EARNINGS_JS__', earnings_js) \
-                 .replace('__HISTORY_JS__',  history_js)  \
-                 .replace('__NEWS_JS__',     news_js)      \
-                 .replace('__META_JS__',     meta_js)      \
-                 .replace('__BUILT_AT__',    built_js)
+output = (template
+    .replace('__EARNINGS_JS__', json.dumps(earnings,   ensure_ascii=False))
+    .replace('__HISTORY_JS__',  json.dumps(history,    ensure_ascii=False))
+    .replace('__NEWS_JS__',     json.dumps(news,       ensure_ascii=False))
+    .replace('__META_JS__',     json.dumps(stock_meta, ensure_ascii=False))
+    .replace('__BUILT_AT__',    json.dumps(built_at)))
 
 with open('docs/index.html', 'w') as f:
     f.write(output)
