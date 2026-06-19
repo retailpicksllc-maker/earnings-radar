@@ -46,7 +46,7 @@ print(f"Fetching earnings for {len(trading_days)} trading days...")
 earnings = {}
 with ThreadPoolExecutor(max_workers=10) as ex:
     for date_str, rows in ex.map(fetch_earnings_day, trading_days, timeout=120):
-        confirmed = [r for r in rows if r.get('time') in ('time-pre-market', 'time-after-hours')]
+        confirmed = [r for r in (rows or []) if r.get('time') in ('time-pre-market', 'time-after-hours')]
         if confirmed:
             earnings[date_str] = confirmed
 
