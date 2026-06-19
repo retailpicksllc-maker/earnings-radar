@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Earnings Calendar</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f7f6f3;--surface:#fff;--border:#e5e3dc;--border-strong:#c9c7be;
+  --text:#1a1916;--muted:#6a6860;--faint:#9e9b93;
+  --accent:#1a56a0;--accent-bg:#eaf1fb;--accent-text:#0c447c;
+  --green:#0f6e56;--green-bg:#e1f5ee;--green-text:#085041;
+  --purple:#3c3489;--purple-bg:#eeedfe;
+  --amber:#633806;--amber-bg:#faeeda;
+  --red:#791f1f;--red-bg:#fcebeb;
+  --r:10px;--rs:6px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
+
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:54px;position:sticky;top:0;z-index:300}
+.logo{font-weight:600;font-size:15px}
+.topbar-right{display:flex;align-items:center;gap:8px}
+.search-wrap{position:relative}
+.search-wrap input{padding:6px 10px 6px 28px;border:1px solid var(--border-strong);border-radius:var(--rs);font-size:12px;font-family:inherit;outline:none;width:180px;background:var(--bg)}
+.search-wrap input:focus{border-color:var(--accent);background:var(--surface)}
+.si{position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--faint);font-size:12px;pointer-events:none}
+.filt{padding:5px 11px;border-radius:20px;border:1px solid var(--border-strong);background:none;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;font-family:inherit}
+.filt:hover{background:var(--border)}.filt.on{background:var(--text);color:#fff;border-color:var(--text)}
+
+.cal-nav{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px}
+.nav-btn{width:28px;height:28px;border-radius:50%;border:1px solid var(--border-strong);background:none;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.nav-btn:hover{background:var(--border)}
+.month-title{font-size:16px;font-weight:600;min-width:160px}
+.today-btn{padding:5px 11px;border:1px solid var(--border-strong);border-radius:var(--rs);background:none;font-size:12px;color:var(--muted);cursor:pointer;font-family:inherit}
+.today-btn:hover{background:var(--border)}
+.legend{display:flex;gap:10px;margin-left:auto;align-items:center}
+.li{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--faint)}
+.ld{width:8px;height:8px;border-radius:50%}
+.ld-pre{background:#d97706}.ld-after{background:#7c3aed}.ld-major{background:#1a56a0}
+
+.cal-wrap{max-width:1200px;margin:0 auto;padding:16px 20px 0}
+.cal-header{display:grid;grid-template-columns:repeat(7,1fr);gap:1px}
+.chc{text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);padding:6px 0 8px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);border:1px solid var(--border)}
+.cell{background:var(--surface);min-height:110px;padding:6px;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.cell.has-data{cursor:pointer}.cell.has-data:hover{background:#faf9f7}
+.cell.other{background:var(--bg)}.cell.other .cday{color:var(--faint)}
+.cell.today{background:var(--accent-bg)}.cell.today .cday{background:var(--accent);color:#fff;border-radius:50%}
+.cell.wknd{background:#fdfcfa}
+.cell.sel{box-shadow:inset 0 0 0 2px var(--accent)}
+.cday{width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:4px;flex-shrink:0}
+.chips{display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden}
+.chip{font-size:10px;font-weight:600;padding:2px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cp{background:var(--amber-bg);color:var(--amber)}.ca{background:var(--purple-bg);color:var(--purple)}
+.ct{background:var(--border);color:var(--faint)}.cm{background:var(--accent-bg);color:var(--accent-text)}
+.more{font-size:10px;color:var(--faint);padding:1px 3px}
+.ccnt{position:absolute;top:5px;right:5px;font-size:9px;color:var(--faint)}
+
+.day-panel{max-width:1200px;margin:0 20px;background:var(--surface);border:1px solid var(--border);border-top:none}
+.day-panel.hide{display:none}
+.dp-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.dp-title{font-size:14px;font-weight:600}.dp-sub{font-size:11px;color:var(--faint);margin-top:1px}
+.dp-close{width:24px;height:24px;border-radius:50%;border:1px solid var(--border-strong);background:none;cursor:pointer;font-size:14px;color:var(--muted);display:flex;align-items:center;justify-content:center}
+.dp-close:hover{background:var(--border)}
+.earn-table{width:100%;border-collapse:collapse;font-size:12px}
+.earn-table th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);padding:8px 14px;border-bottom:1px solid var(--border);white-space:nowrap;background:var(--bg)}
+.earn-table th.r,.earn-table td.r{text-align:right}
+.earn-table td{padding:9px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+.earn-table tr:last-child td{border-bottom:none}
+.earn-table tbody tr{cursor:pointer}
+.earn-table tbody tr:hover td{background:var(--accent-bg)}
+.sym{font-weight:700;color:var(--accent);font-size:12px}
+.co a{color:var(--text);text-decoration:none;font-weight:500;font-size:12px}
+.co a:hover{color:var(--accent)}
+.co-q{font-size:10px;color:var(--faint)}
+.tbadge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;white-space:nowrap}
+.tbp{background:var(--amber-bg);color:var(--amber)}.tba{background:var(--purple-bg);color:var(--purple)}.tbt{background:var(--border);color:var(--faint)}
+.eps{font-weight:500}.mcap{color:var(--muted)}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.hide{display:none}
+.modal{background:var(--surface);border-radius:var(--r);width:100%;max-width:700px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.22)}
+.modal-head{padding:16px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-shrink:0}
+.modal-ticker{font-size:22px;font-weight:700;color:var(--accent)}
+.modal-name{font-size:13px;color:var(--muted);margin-top:2px}
+.modal-meta{font-size:11px;color:var(--faint);margin-top:3px}
+.modal-close{width:28px;height:28px;border-radius:50%;border:1px solid var(--border-strong);background:none;cursor:pointer;font-size:16px;color:var(--muted);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.modal-close:hover{background:var(--border)}
+.modal-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--surface)}
+.mtab{padding:10px 18px;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;border:none;background:none;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-1px}
+.mtab:hover{color:var(--text)}.mtab.on{color:var(--accent);border-bottom-color:var(--accent)}
+.modal-body{overflow-y:auto;flex:1}
+.tab-pane{display:none;padding:16px 20px}.tab-pane.on{display:block}
+
+.upcoming-card{background:var(--accent-bg);border-radius:var(--rs);padding:12px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.uc-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent-text);opacity:.7}
+.uc-val{font-size:13px;font-weight:600;color:var(--accent-text);margin-top:2px}
+.uc-big{font-size:18px;font-weight:700;color:var(--accent-text);margin-top:2px}
+
+.sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);margin-bottom:10px}
+.chart-legend{display:flex;gap:12px;margin-bottom:8px}
+.cl-item{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--faint)}
+.cl-dot{width:10px;height:10px;border-radius:2px}
+.hist-chart{display:flex;align-items:flex-end;gap:8px;height:80px;margin-bottom:14px}
+.bar-grp{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.bars{display:flex;align-items:flex-end;gap:2px;height:64px}
+.bar{width:18px;border-radius:2px 2px 0 0;min-height:3px}
+.bar-est{background:var(--border-strong);opacity:.7}
+.bar-beat{background:#0f6e56}.bar-miss{background:#c0392b}.bar-neu{background:var(--accent)}
+.bar-q{font-size:9px;color:var(--faint);text-align:center;white-space:nowrap}
+.hist-table{width:100%;border-collapse:collapse;font-size:12px}
+.hist-table th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);padding:6px 10px;border-bottom:1px solid var(--border)}
+.hist-table th.r,.hist-table td.r{text-align:right}
+.hist-table td{padding:8px 10px;border-bottom:1px solid var(--border)}
+.hist-table tr:last-child td{border-bottom:none}
+.beat{color:var(--green);font-weight:600}.miss{color:var(--red);font-weight:600}
+.no-data{padding:24px;text-align:center;color:var(--faint);font-size:12px}
+.ext-link{display:inline-flex;align-items:center;gap:4px;color:var(--accent);font-size:11px;text-decoration:none;margin-top:14px}
+.ext-link:hover{text-decoration:underline}
+
+.news-list{display:flex;flex-direction:column}
+.news-item{padding:12px 0;border-bottom:1px solid var(--border)}
+.news-item:last-child{border-bottom:none}
+.news-title a{font-size:13px;font-weight:500;color:var(--text);text-decoration:none;line-height:1.4;display:block}
+.news-title a:hover{color:var(--accent)}
+.news-desc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
+.news-meta{font-size:11px;color:var(--faint);margin-top:5px}
+
+@media(max-width:700px){
+  .cell{min-height:70px;padding:4px}
+  .legend{display:none}
+  .earn-table th:nth-child(n+5),.earn-table td:nth-child(n+5){display:none}
+  .modal{max-height:100vh;border-radius:0}
+  .modal-overlay{padding:0;align-items:flex-end}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">📅 Earnings Calendar</div>
+  <div class="topbar-right">
+    <div class="search-wrap">
+      <span class="si">⌕</span>
+      <input type="text" id="searchBox" placeholder="Symbol or company…" oninput="applySearch()">
+    </div>
+    <button class="filt on" onclick="setTime(this,'all')">All</button>
+    <button class="filt" onclick="setTime(this,'pre')">Pre-mkt</button>
+    <button class="filt" onclick="setTime(this,'after')">After hrs</button>
+  </div>
+</div>
+
+<div class="cal-nav">
+  <button class="nav-btn" onclick="changeMonth(-1)">‹</button>
+  <button class="nav-btn" onclick="changeMonth(1)">›</button>
+  <div class="month-title" id="monthTitle"></div>
+  <button class="today-btn" onclick="goToday()">Today</button>
+  <div class="legend">
+    <div class="li"><div class="ld ld-pre"></div>Pre-market</div>
+    <div class="li"><div class="ld ld-after"></div>After hours</div>
+    <div class="li"><div class="ld ld-major"></div>Major ($50B+)</div>
+  </div>
+</div>
+
+<div class="cal-wrap">
+  <div class="cal-header">
+    <div class="chc">Sun</div><div class="chc">Mon</div><div class="chc">Tue</div>
+    <div class="chc">Wed</div><div class="chc">Thu</div><div class="chc">Fri</div><div class="chc">Sat</div>
+  </div>
+  <div class="cal-grid" id="calGrid"></div>
+</div>
+
+<div class="day-panel hide" id="dayPanel">
+  <div class="dp-header">
+    <div><div class="dp-title" id="dpTitle"></div><div class="dp-sub" id="dpSub"></div></div>
+    <button class="dp-close" onclick="closePanel()">✕</button>
+  </div>
+  <div style="overflow-x:auto;max-height:300px;overflow-y:auto">
+    <table class="earn-table">
+      <thead><tr>
+        <th style="width:70px">Symbol</th><th>Company</th><th style="width:100px">When</th>
+        <th class="r" style="width:90px">EPS Est.</th><th class="r" style="width:90px">Last Yr</th>
+        <th class="r" style="width:100px">Market Cap</th><th style="width:80px">Quarter</th>
+      </tr></thead>
+      <tbody id="dpBody"></tbody>
+    </table>
+  </div>
+</div>
+<div style="height:24px"></div>
+
+<div class="modal-overlay hide" id="modalOverlay" onclick="handleOverlayClick(event)">
+  <div class="modal" id="modalBox">
+    <div class="modal-head">
+      <div>
+        <div class="modal-ticker" id="mTicker"></div>
+        <div class="modal-name" id="mName"></div>
+        <div class="modal-meta" id="mMeta"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="mtab on" id="tabBtn0" onclick="switchTab(0)">&#128202; Earnings History</button>
+      <button class="mtab" id="tabBtn1" onclick="switchTab(1)">&#128240; Latest News</button>
+    </div>
+    <div class="modal-body">
+      <div class="tab-pane on" id="tabHistory"></div>
+      <div class="tab-pane"    id="tabNews"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA = __EARNINGS_JS__;
+const HISTORY = __HISTORY_JS__;
+const NEWS = __NEWS_JS__;
+const META = __META_JS__;
+
+const TODAY     = new Date();
+const TODAY_ISO = TODAY.toISOString().split('T')[0];
+let viewYear = TODAY.getFullYear(), viewMonth = TODAY.getMonth();
+let activeTime = 'all', searchQ = '', selectedDate = null;
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+function pmcap(s){if(!s)return 0;try{return parseFloat(s.replace(/[$,]/g,''));}catch{return 0;}}
+function fmtMcap(v){if(!v)return'–';if(v>=1e12)return'$'+(v/1e12).toFixed(2)+'T';if(v>=1e9)return'$'+(v/1e9).toFixed(1)+'B';if(v>=1e6)return'$'+(v/1e6).toFixed(0)+'M';return'–';}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fmtDateLong(iso){
+  const t=new Date().toISOString().split('T')[0],y=new Date(Date.now()-86400000).toISOString().split('T')[0];
+  const d=new Date(iso+'T12:00:00'),full=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  return iso===t?'Today — '+full:iso===y?'Yesterday — '+full:full;
+}
+
+// Pre-sort each day by market cap
+const SORTED = {};
+Object.keys(DATA).forEach(d => {
+  SORTED[d] = [...DATA[d]].sort((a,b) => pmcap(b.marketCap) - pmcap(a.marketCap));
+});
+
+// ── filters ───────────────────────────────────────────────────────────────────
+function filterRows(rows){
+  let r = rows;
+  if(activeTime==='pre')   r = r.filter(x => x.time==='time-pre-market');
+  if(activeTime==='after') r = r.filter(x => x.time==='time-after-hours');
+  if(searchQ) r = r.filter(x => (x.symbol||'').toLowerCase().includes(searchQ) || (x.name||'').toLowerCase().includes(searchQ));
+  return r;
+}
+function setTime(el,t){document.querySelectorAll('.filt').forEach(b=>b.classList.remove('on'));el.classList.add('on');activeTime=t;renderCal();if(selectedDate)openPanel(selectedDate);}
+function applySearch(){searchQ=(document.getElementById('searchBox').value||'').toLowerCase().trim();renderCal();if(selectedDate)openPanel(selectedDate);}
+
+// ── calendar nav ──────────────────────────────────────────────────────────────
+function changeMonth(d){viewMonth+=d;if(viewMonth>11){viewMonth=0;viewYear++;}if(viewMonth<0){viewMonth=11;viewYear--;}renderCal();}
+function goToday(){viewYear=TODAY.getFullYear();viewMonth=TODAY.getMonth();renderCal();openPanel(TODAY_ISO);}
+
+// ── calendar render ───────────────────────────────────────────────────────────
+function renderCal(){
+  const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('monthTitle').textContent = months[viewMonth]+' '+viewYear;
+  const firstDay    = new Date(viewYear,viewMonth,1).getDay();
+  const daysInMonth = new Date(viewYear,viewMonth+1,0).getDate();
+  const daysInPrev  = new Date(viewYear,viewMonth,0).getDate();
+  let cells = [];
+  for(let i=firstDay-1;i>=0;i--) cells.push({day:daysInPrev-i,cur:false});
+  for(let d=1;d<=daysInMonth;d++) cells.push({day:d,cur:true});
+  for(let d=1;d<=42-cells.length;d++) cells.push({day:d,cur:false});
+
+  document.getElementById('calGrid').innerHTML = cells.map(({day,cur},idx) => {
+    const col = idx%7, isWknd = col===0||col===6;
+    let iso = '';
+    if(cur){ const mm=String(viewMonth+1).padStart(2,'0'), dd=String(day).padStart(2,'0'); iso=`${viewYear}-${mm}-${dd}`; }
+    const rows  = iso ? filterRows(SORTED[iso]||[]) : [];
+    const total = iso ? (SORTED[iso]||[]).length : 0;
+    const isToday=iso===TODAY_ISO, isSel=iso===selectedDate, hasData=rows.length>0;
+    let cls='cell';
+    if(!cur)cls+=' other'; if(isToday)cls+=' today'; if(isWknd)cls+=' wknd'; if(isSel)cls+=' sel'; if(hasData)cls+=' has-data';
+
+    const chips = rows.slice(0,4).map(r => {
+      const big = pmcap(r.marketCap)>=50e9;
+      const tc  = big?'cm':r.time==='time-pre-market'?'cp':r.time==='time-after-hours'?'ca':'ct';
+      return `<div class="chip ${tc}" title="${esc(r.name)}">${esc(r.symbol)}</div>`;
+    }).join('');
+    const more = rows.length>4 ? `<div class="more">+${rows.length-4} more</div>` : '';
+    const cnt  = total>0 ? `<div class="ccnt">${total}</div>` : '';
+    const click = iso ? `data-iso="${iso}"` : '';
+
+    return `<div class="${cls}" ${click}><div class="cday">${day}</div>${iso&&rows.length?`<div class="chips">${chips}${more}</div>`:''} ${cnt}</div>`;
+  }).join('');
+
+  // attach click via event delegation — no inline onclick with string data
+  document.getElementById('calGrid').onclick = e => {
+    const cell = e.target.closest('.cell.has-data');
+    if(!cell) return;
+    const iso = cell.dataset.iso;
+    if(!iso) return;
+    if(selectedDate===iso) closePanel(); else openPanel(iso);
+  };
+}
+
+// ── day panel ─────────────────────────────────────────────────────────────────
+function openPanel(iso){
+  selectedDate = iso; renderCal();
+  const rows = filterRows(SORTED[iso]||[]), all = SORTED[iso]||[];
+  document.getElementById('dpTitle').textContent = fmtDateLong(iso);
+  document.getElementById('dpSub').textContent   = rows.length + (rows.length!==all.length?' of '+all.length:'') + ' companies reporting';
+
+  document.getElementById('dpBody').innerHTML = !rows.length
+    ? `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--faint)">No earnings match filter.</td></tr>`
+    : rows.map(r => {
+        const tl = r.time==='time-pre-market'?'Pre-market':r.time==='time-after-hours'?'After hours':'TBD';
+        const tc = r.time==='time-pre-market'?'tbp':r.time==='time-after-hours'?'tba':'tbt';
+        const mc = pmcap(r.marketCap);
+        // Use data-sym attribute — no string escaping of names needed
+        return `<tr data-sym="${esc(r.symbol)}">
+          <td><span class="sym">${esc(r.symbol)}</span></td>
+          <td>
+            <div class="co"><a href="https://finance.yahoo.com/quote/${esc(r.symbol)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(r.name)}</a></div>
+            <div class="co-q">${esc(r.fiscalQuarterEnding||'')}</div>
+          </td>
+          <td><span class="tbadge ${tc}">${tl}</span></td>
+          <td class="r"><span class="eps">${esc(r.epsForecast||'–')}</span></td>
+          <td class="r"><span style="color:var(--muted)">${esc(r.lastYearEPS||'–')}</span></td>
+          <td class="r"><span class="mcap">${fmtMcap(mc)}</span></td>
+          <td style="font-size:11px;color:var(--faint)">${esc(r.fiscalQuarterEnding||'')}</td>
+        </tr>`;
+      }).join('');
+
+  // Row click via delegation — reads symbol from data attribute
+  document.getElementById('dpBody').onclick = e => {
+    const row = e.target.closest('tr[data-sym]');
+    if(!row) return;
+    const sym = row.dataset.sym;
+    if(sym) openStock(sym);
+  };
+
+  const panel = document.getElementById('dayPanel');
+  panel.classList.remove('hide');
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function closePanel(){selectedDate=null;document.getElementById('dayPanel').classList.add('hide');renderCal();}
+
+// ── modal ─────────────────────────────────────────────────────────────────────
+function switchTab(idx){
+  document.querySelectorAll('.mtab').forEach((t,i)=>t.classList.toggle('on',i===idx));
+  document.querySelectorAll('.tab-pane').forEach((p,i)=>p.classList.toggle('on',i===idx));
+}
+function handleOverlayClick(e){if(e.target===document.getElementById('modalOverlay'))closeModal();}
+function closeModal(){document.getElementById('modalOverlay').classList.add('hide');document.body.style.overflow='';}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+
+function openStock(sym){
+  const m = META[sym] || {};
+  document.getElementById('mTicker').textContent = sym;
+  document.getElementById('mName').textContent   = m.name || '';
+  document.getElementById('mMeta').textContent   = [m.date, m.when, m.eps ? 'Est. EPS '+m.eps : ''].filter(Boolean).join(' · ');
+  switchTab(0);
+  buildHistory(sym, m);
+  buildNews(sym);
+  document.getElementById('modalOverlay').classList.remove('hide');
+  document.body.style.overflow = 'hidden';
+}
+
+function buildHistory(sym, m){
+  const hist = HISTORY[sym];
+  let html = '';
+
+  // Upcoming card
+  if(m.date || m.eps){
+    html += `<div class="upcoming-card">
+      <div><div class="uc-label">Next Report</div><div class="uc-val">${esc(m.date||'')}${m.when?' · '+esc(m.when):''}</div></div>
+      ${m.eps?`<div style="text-align:right"><div class="uc-label">EPS Estimate</div><div class="uc-big">${esc(m.eps)}</div></div>`:''}
+    </div>`;
+  }
+
+  if(!hist||!hist.length){
+    html += `<div class="no-data">No earnings history available.<br>
+      <a class="ext-link" href="https://www.nasdaq.com/market-activity/stocks/${encodeURIComponent(sym.toLowerCase())}/earnings" target="_blank" rel="noopener">View on NASDAQ ↗</a></div>`;
+    document.getElementById('tabHistory').innerHTML = html;
+    return;
+  }
+
+  // Chart
+  const maxEps = Math.max(...hist.flatMap(q=>[Math.abs(parseFloat(q.eps)||0), Math.abs(parseFloat(q.consensusForecast)||0)]), 0.01);
+  const bars = hist.map(q => {
+    const actual  = parseFloat(q.eps)||0;
+    const est     = parseFloat(q.consensusForecast)||0;
+    const surprise= parseFloat(q.percentageSurprise)||0;
+    const actCls  = surprise>0?'bar-beat':surprise<0?'bar-miss':'bar-neu';
+    const hEst = Math.round(Math.abs(est)/maxEps*60);
+    const hAct = Math.round(Math.abs(actual)/maxEps*60);
+    return `<div class="bar-grp">
+      <div class="bars">
+        <div class="bar bar-est" style="height:${Math.max(hEst,3)}px" title="Est: ${est}"></div>
+        <div class="bar ${actCls}" style="height:${Math.max(hAct,3)}px" title="Actual: ${actual}"></div>
+      </div>
+      <div class="bar-q">${esc(q.fiscalQtrEnd||'').replace(' ','<br>')}</div>
+    </div>`;
+  }).join('');
+
+  // Table
+  const trows = hist.map(q => {
+    const s = parseFloat(q.percentageSurprise)||0;
+    const cls = s>0?'beat':s<0?'miss':'';
+    const sign = s>0?'+':'';
+    return `<tr>
+      <td>${esc(q.fiscalQtrEnd||'')}</td>
+      <td>${esc(q.dateReported||'')}</td>
+      <td class="r" style="font-weight:500">${q.eps!=null?q.eps:'–'}</td>
+      <td class="r" style="color:var(--muted)">${q.consensusForecast||'–'}</td>
+      <td class="r"><span class="${cls}">${sign}${s.toFixed(1)}%</span></td>
+    </tr>`;
+  }).join('');
+
+  html += `
+    <div class="sec-title">Earnings History — last ${hist.length} quarters</div>
+    <div class="chart-legend">
+      <div class="cl-item"><div class="cl-dot" style="background:var(--border-strong)"></div>Estimate</div>
+      <div class="cl-item"><div class="cl-dot bar-beat"></div>Beat</div>
+      <div class="cl-item"><div class="cl-dot bar-miss"></div>Miss</div>
+    </div>
+    <div class="hist-chart">${bars}</div>
+    <table class="hist-table">
+      <thead><tr><th>Quarter</th><th>Reported</th><th class="r">Actual EPS</th><th class="r">Est. EPS</th><th class="r">Surprise</th></tr></thead>
+      <tbody>${trows}</tbody>
+    </table>
+    <a class="ext-link" href="https://www.nasdaq.com/market-activity/stocks/${encodeURIComponent(sym.toLowerCase())}/earnings" target="_blank" rel="noopener">Full history on NASDAQ ↗</a>`;
+
+  document.getElementById('tabHistory').innerHTML = html;
+}
+
+function buildNews(sym){
+  const articles = NEWS[sym];
+  if(!articles||!articles.length){
+    document.getElementById('tabNews').innerHTML = `<div class="no-data">No recent news cached for ${esc(sym)}.<br>
+      <a class="ext-link" href="https://www.nasdaq.com/feed/rssoutbound?symbol=${encodeURIComponent(sym)}" target="_blank" rel="noopener">View news on NASDAQ ↗</a></div>`;
+    return;
+  }
+  const html = articles.map(a => `<div class="news-item">
+    <div class="news-title"><a href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.title)}</a></div>
+    ${a.desc ? `<div class="news-desc">${esc(a.desc)}</div>` : ''}
+    <div class="news-meta">${esc(a.date)} · ${esc(a.time)}</div>
+  </div>`).join('');
+  document.getElementById('tabNews').innerHTML = `<div class="news-list">${html}</div>
+    <a class="ext-link" href="https://www.nasdaq.com/feed/rssoutbound?symbol=${encodeURIComponent(sym)}" target="_blank" rel="noopener">More news on NASDAQ ↗</a>`;
+}
+
+const BUILT_AT = __BUILT_AT__;
+// ── init ──────────────────────────────────────────────────────────────────────
+document.getElementById("builtAt").textContent = "Updated " + BUILT_AT;
+renderCal();
+if(SORTED[TODAY_ISO] && SORTED[TODAY_ISO].length) openPanel(TODAY_ISO);
+</script>
+</body>
+</html>
