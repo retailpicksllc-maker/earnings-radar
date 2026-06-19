@@ -11,6 +11,9 @@ import json
 import re
 import html as html_mod
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+EASTERN = ZoneInfo("America/New_York")
 from concurrent.futures import ThreadPoolExecutor
 
 print("Starting build...")
@@ -116,8 +119,8 @@ def fetch_news(ticker):
                 'title': title,
                 'link':  item.findtext('link', ''),
                 'desc':  strip_html(item.findtext('description', ''))[:180],
-                'time':  dt.strftime('%-I:%M %p'),
-                'date':  dt.strftime('%b %d'),
+                'time':  dt.astimezone(EASTERN).strftime('%-I:%M %p ET'),
+                'date':  dt.astimezone(EASTERN).strftime('%b %d'),
                 'ts':    int(dt.timestamp()),
             })
         return ticker, items
@@ -150,7 +153,7 @@ for date_str, rows in earnings.items():
             }
 
 # ── 5. Serialize ──────────────────────────────────────────────────────────────
-built_at = datetime.now().strftime('%b %d, %Y at %-I:%M %p UTC')
+built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
 
 earnings_js = json.dumps(earnings, ensure_ascii=False)
 history_js  = json.dumps(history,  ensure_ascii=False)
