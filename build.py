@@ -94,7 +94,6 @@ def parse_mcap(s):
     try: return float(s.replace('$', '').replace(',', ''))
     except: return 0
 
-# Future tickers (upcoming earnings)
 all_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
                  for rows in earnings.values() for r in rows]
 seen = set()
@@ -104,16 +103,6 @@ for mc, sym in sorted(all_rows_flat, reverse=True):
         seen.add(sym)
         top_tickers.append(sym)
     if len(top_tickers) >= 200:
-        break
-
-# Also include top past tickers (by market cap) so clicking past dates shows history
-past_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
-                  for rows in past_earnings.values() for r in rows]
-for mc, sym in sorted(past_rows_flat, reverse=True):
-    if sym and sym not in seen and mc > 1e9:
-        seen.add(sym)
-        top_tickers.append(sym)
-    if len(top_tickers) >= 500:
         break
 
 # Load cached history (accumulates 3+ years over time)
