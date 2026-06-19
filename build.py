@@ -183,6 +183,90 @@ with open(CACHE_FILE, 'w') as f:
     json.dump(history, f)
 print(f"  Cache saved: {len(history)} tickers")
 
+# ── Revenue actuals from SEC EDGAR ────────────────────────────────────────────
+REV_CACHE_FILE = 'data/revenue_cache.json'
+revenue_cache = {}
+if os.path.exists(REV_CACHE_FILE):
+    try:
+        with open(REV_CACHE_FILE) as f:
+            revenue_cache = json.load(f)
+        print(f"  Loaded revenue cache: {len(revenue_cache)} tickers")
+    except:
+        pass
+
+# Load SEC ticker → CIK map (one call covers all tickers)
+cik_map = {}
+try:
+    req = urllib.request.Request(
+        'https://www.sec.gov/files/company_tickers.json',
+        headers={'User-Agent': 'retail.picksllc@gmail.com'}
+    )
+    with urllib.request.urlopen(req, timeout=15) as r:
+        tickers_data = json.loads(r.read())
+    cik_map = {v['ticker']: str(v['cik_str']).zfill(10) for v in tickers_data.values()}
+    print(f"  SEC CIK map: {len(cik_map)} tickers")
+except Exception as e:
+    print(f"  SEC CIK map failed: {e}")
+
+REV_FIELDS = [
+    'RevenueFromContractWithCustomerExcludingAssessedTax',
+    'Revenues',
+    'SalesRevenueNet',
+    'RevenueFromContractWithCustomerIncludingAssessedTax',
+]
+
+def fetch_revenue_sec(ticker):
+    if ticker in revenue_cache:
+        return ticker, revenue_cache[ticker]
+    cik = cik_map.get(ticker)
+    if not cik:
+        return ticker, {}
+    for field in REV_FIELDS:
+        try:
+            url = f'https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/us-gaap/{field}.json'
+            req = urllib.request.Request(url, headers={'User-Agent': 'retail.picksllc@gmail.com'})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                data = json.loads(r.read())
+            entries = data.get('units', {}).get('USD', [])
+            qtrs = {}
+            for e in entries:
+                if e.get('form') not in ('10-Q', '10-K'):
+                    continue
+                try:
+                    start = datetime.strptime(e.get('start', e['end']), '%Y-%m-%d')
+                    end   = datetime.strptime(e['end'], '%Y-%m-%d')
+                    if 75 <= (end - start).days <= 105:
+                        # Key by "Mon YYYY" to match fiscalQtrEnd
+                        key = end.strftime('%b %Y')
+                        qtrs[key] = round(e['val'] / 1e6, 1)  # store in $M
+                except:
+                    continue
+            if qtrs:
+                return ticker, qtrs
+        except:
+            continue
+    return ticker, {}
+
+tickers_needing_rev = [t for t in top_tickers if t not in revenue_cache]
+print(f"Fetching revenue for {len(tickers_needing_rev)} tickers from SEC EDGAR...")
+revenue_data = dict(revenue_cache)
+with ThreadPoolExecutor(max_workers=20) as ex:
+    for ticker, qtrs in ex.map(fetch_revenue_sec, top_tickers, timeout=120):
+        if qtrs:
+            revenue_data[ticker] = qtrs
+
+# Merge revenue into history entries
+for ticker, quarters in history.items():
+    rev = revenue_data.get(ticker, {})
+    for q in quarters:
+        q['revActual'] = rev.get(q.get('fiscalQtrEnd', ''))
+
+# Save revenue cache
+os.makedirs('data', exist_ok=True)
+with open(REV_CACHE_FILE, 'w') as f:
+    json.dump(revenue_data, f)
+print(f"  Revenue cache saved: {len(revenue_data)} tickers")
+
 # ── 3. News ───────────────────────────────────────────────────────────────────
 def strip_html(t):
     t = re.sub(r'<!\[CDATA\[(.*?)\]\]>', r'\1', t or '', flags=re.DOTALL)

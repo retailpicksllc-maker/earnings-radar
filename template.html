@@ -110,6 +110,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .bar{width:18px;border-radius:2px 2px 0 0;min-height:3px}
 .bar-est{background:var(--border-strong);opacity:.7}
 .bar-beat{background:#0f6e56}.bar-miss{background:#c0392b}.bar-neu{background:var(--accent)}
+.bar-rev{background:#1a56a0;opacity:.75}
 .bar-q{font-size:9px;color:var(--faint);text-align:center;white-space:nowrap}
 .hist-table{width:100%;border-collapse:collapse;font-size:12px}
 .hist-table th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);padding:6px 10px;border-bottom:1px solid var(--border)}
@@ -421,19 +422,25 @@ function buildHistory(sym, m){
     return;
   }
 
-  // Chart
+  // Chart — EPS (est + act) and Revenue actual, independent scales
+  const hasRev = hist.some(q => q.revActual != null);
   const maxEps = Math.max(...hist.flatMap(q=>[Math.abs(parseFloat(q.eps)||0), Math.abs(parseFloat(q.consensusForecast)||0)]), 0.01);
+  const maxRev = hasRev ? Math.max(...hist.map(q => q.revActual||0), 0.01) : 0.01;
+
   const bars = hist.map(q => {
     const actual  = parseFloat(q.eps)||0;
     const est     = parseFloat(q.consensusForecast)||0;
     const surprise= parseFloat(q.percentageSurprise)||0;
     const actCls  = surprise>0?'bar-beat':surprise<0?'bar-miss':'bar-neu';
-    const hEst = Math.round(Math.abs(est)/maxEps*60);
-    const hAct = Math.round(Math.abs(actual)/maxEps*60);
+    const hEst = Math.round(Math.abs(est)/maxEps*58);
+    const hAct = Math.round(Math.abs(actual)/maxEps*58);
+    const hRev = hasRev && q.revActual ? Math.round(q.revActual/maxRev*58) : 0;
+    const revB = hasRev ? `<div class="bar bar-rev" style="height:${Math.max(hRev,3)}px" title="Revenue: $${q.revActual!=null?(q.revActual>=1000?(q.revActual/1000).toFixed(1)+'B':q.revActual.toFixed(0)+'M'):'N/A'}"></div>` : '';
     return `<div class="bar-grp">
       <div class="bars">
-        <div class="bar bar-est" style="height:${Math.max(hEst,3)}px" title="Est: ${est}"></div>
-        <div class="bar ${actCls}" style="height:${Math.max(hAct,3)}px" title="Actual: ${actual}"></div>
+        <div class="bar bar-est" style="height:${Math.max(hEst,3)}px" title="EPS Est: $${est}"></div>
+        <div class="bar ${actCls}" style="height:${Math.max(hAct,3)}px" title="EPS Act: $${actual}"></div>
+        ${revB}
       </div>
       <div class="bar-q">${esc(q.fiscalQtrEnd||'').replace(' ','<br>')}</div>
     </div>`;
@@ -444,25 +451,28 @@ function buildHistory(sym, m){
     const s = parseFloat(q.percentageSurprise)||0;
     const cls = s>0?'beat':s<0?'miss':'';
     const sign = s>0?'+':'';
+    const revFmt = q.revActual!=null?(q.revActual>=1000?'$'+(q.revActual/1000).toFixed(2)+'B':'$'+q.revActual.toFixed(0)+'M'):'–';
     return `<tr>
       <td>${esc(q.fiscalQtrEnd||'')}</td>
       <td>${esc(q.dateReported||'')}</td>
       <td class="r" style="font-weight:500">${q.eps!=null?q.eps:'–'}</td>
       <td class="r" style="color:var(--muted)">${q.consensusForecast||'–'}</td>
       <td class="r"><span class="${cls}">${sign}${s.toFixed(1)}%</span></td>
+      <td class="r" style="color:var(--accent)">${revFmt}</td>
     </tr>`;
   }).join('');
 
   html += `
     <div class="sec-title">Earnings History — last ${hist.length} quarters</div>
     <div class="chart-legend">
-      <div class="cl-item"><div class="cl-dot" style="background:var(--border-strong)"></div>Estimate</div>
-      <div class="cl-item"><div class="cl-dot bar-beat"></div>Beat</div>
-      <div class="cl-item"><div class="cl-dot bar-miss"></div>Miss</div>
+      <div class="cl-item"><div class="cl-dot" style="background:var(--border-strong)"></div>EPS Est</div>
+      <div class="cl-item"><div class="cl-dot bar-beat"></div>EPS Beat</div>
+      <div class="cl-item"><div class="cl-dot bar-miss"></div>EPS Miss</div>
+      ${hasRev?'<div class="cl-item"><div class="cl-dot bar-rev"></div>Revenue</div>':''}
     </div>
     <div class="hist-chart">${bars}</div>
     <table class="hist-table">
-      <thead><tr><th>Quarter</th><th>Reported</th><th class="r">Actual EPS</th><th class="r">Est. EPS</th><th class="r">Surprise</th></tr></thead>
+      <thead><tr><th>Quarter</th><th>Reported</th><th class="r">EPS Act</th><th class="r">EPS Est</th><th class="r">Surprise</th><th class="r">Revenue</th></tr></thead>
       <tbody>${trows}</tbody>
     </table>
     <a class="ext-link" href="https://www.nasdaq.com/market-activity/stocks/${encodeURIComponent(sym.toLowerCase())}/earnings" target="_blank" rel="noopener">Full history on NASDAQ ↗</a>`;
