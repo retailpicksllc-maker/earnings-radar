@@ -286,11 +286,11 @@ function renderCal(){
     const chips = rows.slice(0,4).map(r => {
       const big = pmcap(r.marketCap)>=50e9;
       const tc  = big?'cm':r.time==='time-pre-market'?'cp':r.time==='time-after-hours'?'ca':'ct';
-      return `<div class="chip ${tc}" title="${esc(r.name)}">${esc(r.symbol)}</div>`;
+      return `<div class="chip ${tc}" data-sym="${esc(r.symbol)}" title="${esc(r.name)}">${esc(r.symbol)}</div>`;
     }).join('');
     const more = rows.length>4 ? `<div class="more">+${rows.length-4} more</div>` : '';
     const cnt  = total>0 ? `<div class="ccnt">${total}</div>` : '';
-    const pastChips = pastRows.slice(0,4).map(r => { const big=pmcap(r.marketCap)>=50e9; const tc=big?'cm':r.time==='time-pre-market'?'cp':r.time==='time-after-hours'?'ca':'cp'; return `<div class="chip ${tc}" title="${esc(r.name||r.symbol)}">${esc(r.symbol)}</div>`; }).join('');
+    const pastChips = pastRows.slice(0,4).map(r => { const big=pmcap(r.marketCap)>=50e9; const tc=big?'cm':r.time==='time-pre-market'?'cp':r.time==='time-after-hours'?'ca':'cp'; return `<div class="chip ${tc}" data-sym="${esc(r.symbol)}" title="${esc(r.name||r.symbol)}">${esc(r.symbol)}</div>`; }).join('');
     const pastMore  = pastRows.length>4 ? `<div class="more">+${pastRows.length-4} more</div>` : '';
     const pastCnt   = pastRows.length>0 ? `<div class="ccnt" style="color:var(--faint)">${pastRows.length}</div>` : '';
     const click = iso ? `data-iso="${iso}"` : '';
@@ -300,6 +300,9 @@ function renderCal(){
 
   // attach click via event delegation — no inline onclick with string data
   document.getElementById('calGrid').onclick = e => {
+    // If a chip was clicked, open stock modal directly
+    const chip = e.target.closest('.chip[data-sym]');
+    if(chip){ openStock(chip.dataset.sym); return; }
     const cell = e.target.closest('.cell.has-data, .cell.has-past');
     if(!cell) return;
     const iso = cell.dataset.iso;
