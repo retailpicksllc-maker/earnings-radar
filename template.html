@@ -83,20 +83,46 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .fi-surp{font-weight:700;text-align:right}
 /* Stock Detail */
 .sd{flex:1;display:flex;flex-direction:column;overflow:hidden}
-.sd-head{padding:12px;border-bottom:1px solid var(--border);flex-shrink:0}
-.sd-top{display:flex;align-items:flex-start;gap:10px}
-.sd-logo{width:48px;height:48px;border-radius:10px;overflow:hidden;background:var(--surface2);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
-.sd-logo img{width:100%;height:100%;object-fit:contain;position:absolute}
-.sd-logo-fb{font-size:14px;font-weight:800;color:#fff;z-index:1}
-.sd-ticker{font-size:22px;font-weight:800}
-.sd-name{font-size:11px;color:var(--muted);margin-top:2px}
-.sd-when{font-size:10px;color:var(--faint);margin-top:2px}
-.sd-x{margin-left:auto;width:24px;height:24px;border-radius:50%;border:1px solid var(--border2);background:none;color:var(--muted);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
-.sd-x:hover{background:var(--surface2);color:var(--text)}
-.sd-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:10px}
+/* EarningsHub-style card */
+.ec-card{margin:12px;border-radius:12px;background:var(--surface2);border:1px solid var(--border2);flex-shrink:0;overflow:hidden}
+.ec-card-head{display:flex;align-items:center;gap:10px;padding:12px 12px 10px}
+.ec-card-logo{width:44px;height:44px;border-radius:10px;overflow:hidden;background:#fff;border:1px solid #e5e7eb;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+.ec-card-logo img{width:100%;height:100%;object-fit:contain;position:absolute;top:0;left:0}
+.ec-card-logo-fb{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff}
+.ec-card-title{flex:1;min-width:0}
+.ec-card-name{font-size:15px;font-weight:700;color:var(--text);line-height:1.2}
+.ec-card-ago{font-size:11px;color:var(--muted);margin-top:2px}
+.ec-card-menu{background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:2px 4px;letter-spacing:1px;line-height:1}
+.ec-card-x{width:24px;height:24px;border-radius:50%;border:1px solid var(--border2);background:none;color:var(--muted);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ec-card-x:hover{background:var(--surface);color:var(--text)}
+/* Card tabs */
+.ec-card-tabs{display:flex;border-bottom:1px solid var(--border);margin:0 0 0 0}
+.ec-card-tab{flex:1;text-align:center;padding:9px 8px;font-size:12px;font-weight:600;color:var(--muted);cursor:default;border-bottom:2px solid transparent;display:flex;align-items:center;justify-content:center;gap:5px}
+.ec-card-tab.on{color:var(--text);border-bottom-color:var(--text)}
+.pro-badge{font-size:9px;font-weight:700;background:rgba(245,158,11,.18);color:var(--amber);border-radius:4px;padding:1px 4px;letter-spacing:.03em}
+/* REV / EPS rows */
+.ec-results{padding:4px 0}
+.ec-row{display:grid;grid-template-columns:52px 1fr 1fr 56px;align-items:center;padding:10px 14px;gap:4px}
+.ec-row-divider{height:1px;background:var(--border);margin:0 14px}
+.ec-metric{font-size:13px;font-weight:700;color:var(--text)}
+.ec-est{font-size:12px;color:var(--muted)}
+.ec-actual{font-size:14px;font-weight:700;color:var(--text)}
+.ec-surp{font-size:13px;font-weight:700;text-align:right}
+.ec-footnote{font-size:10px;color:var(--faint);padding:0 14px 10px;line-height:1.4}
+/* Action buttons */
+.ec-actions{display:flex;align-items:center;gap:6px;padding:8px 12px 12px;border-top:1px solid var(--border)}
+.ec-play{width:36px;height:36px;border-radius:50%;background:#fff;border:none;color:#000;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ec-play:hover{background:#e5e7eb}
+.ec-act-btn{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.06);border:1px solid var(--border2);border-radius:8px;padding:5px 9px;font-size:11px;font-weight:600;color:var(--muted);cursor:not-allowed;white-space:nowrap;font-family:inherit}
+.plus-badge{font-size:9px;font-weight:700;background:rgba(124,58,237,.25);color:var(--accent2);border-radius:4px;padding:1px 4px}
+.ec-share{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid var(--border2);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;margin-left:auto;flex-shrink:0}
+/* Summary metrics strip below card */
+.sd-metrics-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0 12px 8px;flex-shrink:0}
 .met{background:var(--surface2);border-radius:6px;padding:6px 7px}
 .met-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--faint)}
 .met-val{font-size:12px;font-weight:700;margin-top:2px}
+/* Existing logo fallback reused */
+.sd-logo-fb{font-size:14px;font-weight:800;color:#fff;z-index:1}
 .sd-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 12px;flex-shrink:0}
 .sd-tab{padding:8px 10px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .1s}
 .sd-tab:hover{color:var(--text)}
@@ -178,20 +204,37 @@ table.ht{width:100%;border-collapse:collapse;font-size:11px}
       <div id="feedList"></div>
     </div>
     <div id="sdPane" style="display:none;flex:1;flex-direction:column" class="sd">
-      <div class="sd-head">
-        <div class="sd-top">
-          <div class="sd-logo" id="sdLogo"><span class="sd-logo-fb" id="sdFb"></span></div>
-          <div style="flex:1;min-width:0">
-            <div class="sd-ticker" id="sdTicker"></div>
-            <div class="sd-name" id="sdName"></div>
-            <div class="sd-when" id="sdWhen"></div>
+      <!-- EarningsHub-style top card -->
+      <div class="ec-card" id="ecCard">
+        <div class="ec-card-head">
+          <div class="ec-card-logo" id="sdLogo">
+            <div class="ec-card-logo-fb" id="sdFb"></div>
           </div>
-          <button class="sd-x" onclick="closeDetail()">&#10005;</button>
+          <div class="ec-card-title">
+            <div class="ec-card-name" id="sdTicker"></div>
+            <div class="ec-card-ago" id="sdWhen"></div>
+          </div>
+          <button class="ec-card-x" onclick="closeDetail()">&#10005;</button>
         </div>
-        <div class="sd-metrics" id="sdMet"></div>
+        <div class="ec-card-tabs">
+          <div class="ec-card-tab on">Results</div>
+          <div class="ec-card-tab">Price Move <span class="pro-badge">Pro</span></div>
+        </div>
+        <div class="ec-results" id="ecResults"></div>
+        <div class="ec-footnote" id="ecFootnote"></div>
+        <div class="ec-actions">
+          <button class="ec-play">&#9654;</button>
+          <button class="ec-act-btn">&#9646;&#9646; Slides <span class="plus-badge">Plus</span></button>
+          <button class="ec-act-btn">&#9741; Report <span class="plus-badge">Plus</span></button>
+          <button class="ec-act-btn">&#9741; Transcript <span class="plus-badge">Plus</span></button>
+          <button class="ec-share">&#8679;</button>
+        </div>
       </div>
+      <!-- Summary metrics strip -->
+      <div class="sd-metrics-strip" id="sdMet"></div>
+      <!-- History tabs -->
       <div class="sd-tabs">
-        <div class="sd-tab on" data-tab="0" onclick="switchTab(0,this)">Earnings</div>
+        <div class="sd-tab on" data-tab="0" onclick="switchTab(0,this)">History</div>
         <div class="sd-tab" data-tab="1" onclick="switchTab(1,this)">News</div>
       </div>
       <div class="sd-pane on" id="paneEarnings"></div>
@@ -385,7 +428,6 @@ function openStock(sym){
   sd.style.display='flex';
 
   const m=META[sym]||{};
-  // Find name from all sources
   let name=m.name||'';
   if(!name){
     for(const iso of Object.keys(PAST_DATA)){
@@ -400,29 +442,74 @@ function openStock(sym){
     }
   }
 
-  // Logo
+  // Logo — white bg card with fallback
   const sdL=document.getElementById('sdLogo');
-  sdL.innerHTML=`<img src="https://assets.parqet.com/logos/symbol/${encodeURIComponent(sym)}?format=png" loading="lazy" onerror="this.style.display='none'" style="position:absolute;width:48px;height:48px;object-fit:contain">
-    <span class="sd-logo-fb" style="background:${lcolor(sym)}">${(sym||'??').slice(0,2)}</span>`;
+  const sdFb=document.getElementById('sdFb');
+  sdFb.style.background=lcolor(sym);
+  sdFb.textContent=(sym||'??').slice(0,2);
+  const img=document.createElement('img');
+  img.src=`https://assets.parqet.com/logos/symbol/${encodeURIComponent(sym)}?format=png`;
+  img.loading='lazy';
+  img.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain';
+  img.onerror=function(){this.style.display='none';};
+  // remove old img if any
+  sdL.querySelectorAll('img').forEach(el=>el.remove());
+  sdL.insertBefore(img,sdFb);
 
-  document.getElementById('sdTicker').textContent=sym;
-  document.getElementById('sdName').textContent=name;
+  const hist=mergeHist(sym);
+  const q0=hist[0]||{};
 
-  // Find upcoming or reported date
+  // Card title: "SYM Q1 2026 Earnings" or "SYM Upcoming Earnings"
+  const qLabel=qLbl(q0.fiscalQtrEnd||'');
+  const upcoming=Object.keys(DATA).some(iso=>(DATA[iso]||[]).find(r=>r.symbol===sym));
+  document.getElementById('sdTicker').textContent=sym+(name?' – '+name:'')+(qLabel?' '+qLabel+' Earnings':' Earnings');
+
+  // Days ago / upcoming
   let whenStr='';
-  for(const iso of Object.keys(DATA)){
-    const row=(DATA[iso]||[]).find(r=>r.symbol===sym);
-    if(row){whenStr='Reports '+iso+(row.time==='time-pre-market'?' · Before Open':row.time==='time-after-hours'?' · After Hours':'');break;}
+  let reportedIso='';
+  for(const iso of Object.keys(PAST_DATA).sort().reverse()){
+    if((PAST_DATA[iso]||[]).find(r=>r.symbol===sym)){reportedIso=iso;break;}
   }
-  if(!whenStr){
-    for(const iso of Object.keys(PAST_DATA).sort().reverse()){
-      const row=(PAST_DATA[iso]||[]).find(r=>r.symbol===sym);
-      if(row){whenStr='Last reported '+iso;break;}
+  if(reportedIso){
+    const diff=Math.round((new Date()-new Date(reportedIso+'T12:00:00'))/86400000);
+    whenStr=diff===0?'Today':diff===1?'1d ago':diff+'d ago';
+  } else {
+    for(const iso of Object.keys(DATA)){
+      const row=(DATA[iso]||[]).find(r=>r.symbol===sym);
+      if(row){whenStr='Reports '+iso+(row.time==='time-pre-market'?' · Before Open':row.time==='time-after-hours'?' · After Hours':'');break;}
     }
   }
   document.getElementById('sdWhen').textContent=whenStr;
 
-  const hist=mergeHist(sym);
+  // Populate REV/EPS card
+  const revAct=q0.revActual||null;
+  const epsAct=q0.eps!=null?parseFloat(q0.eps):null;
+  const epsEst=q0.consensusForecast!=null?parseFloat(q0.consensusForecast):null;
+  const epsSurp=q0.percentageSurprise!==''?parseFloat(q0.percentageSurprise):null;
+  const revSurp=null; // no rev estimate available
+
+  let rows='';
+  // REV row
+  rows+=`<div class="ec-row">
+    <div class="ec-metric">REV</div>
+    <div class="ec-est" style="color:var(--faint)">—</div>
+    <div class="ec-actual">${revAct?fmtM(revAct):'—'}</div>
+    <div class="ec-surp flat">—</div>
+  </div>`;
+  rows+=`<div class="ec-row-divider"></div>`;
+  // EPS row
+  const epsColor=epsSurp!=null?(epsSurp>0?'var(--green)':'var(--red)'):'var(--muted)';
+  const epsSurpStr=epsSurp!=null?(epsSurp>0?'+':'')+epsSurp.toFixed(2)+'%':'—';
+  rows+=`<div class="ec-row">
+    <div class="ec-metric">EPS<span style="color:var(--faint);font-size:10px">*</span></div>
+    <div class="ec-est">${epsEst!=null?'$'+epsEst.toFixed(2)+' <span style=\'color:var(--faint);font-size:10px\'>(est)</span>':'—'}</div>
+    <div class="ec-actual">${epsAct!=null?'$'+epsAct.toFixed(2):'—'}</div>
+    <div class="ec-surp" style="color:${epsColor}">${epsSurpStr}</div>
+  </div>`;
+  document.getElementById('ecResults').innerHTML=rows;
+  document.getElementById('ecFootnote').textContent=epsAct!=null?'*Adjusted EPS vs consensus estimate':'';
+
+  // Summary metrics strip
   const mc=pmcap((Object.values(PAST_DATA).flatMap(r=>r).find(r=>r.symbol===sym)||{}).marketCap||'')||
             pmcap((Object.values(DATA).flatMap(r=>r).find(r=>r.symbol===sym)||{}).marketCap||'');
   const revTTM=hist.slice(0,4).reduce((s,q)=>s+(q.revActual||0),0)||0;
@@ -430,7 +517,6 @@ function openStock(sym){
   const beatQ=hist.filter(q=>parseFloat(q.percentageSurprise)>0);
   const totQ=hist.filter(q=>q.percentageSurprise!=='');
   const beatPct=totQ.length?Math.round(beatQ.length/totQ.length*100):null;
-
   document.getElementById('sdMet').innerHTML=`
     <div class="met"><div class="met-lbl">Mkt Cap</div><div class="met-val">${fmtMcap(mc)}</div></div>
     <div class="met"><div class="met-lbl">EPS TTM</div><div class="met-val">${epsTTM?'$'+epsTTM.toFixed(2):'—'}</div></div>
