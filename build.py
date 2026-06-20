@@ -221,16 +221,31 @@ except Exception as e:
 import re as _re
 
 _REV_PRIORITY = [
+    # Standard US-GAAP / IFRS revenue fields
     'RevenueFromContractWithCustomerExcludingAssessedTax',
     'Revenues', 'RevenuesNetOfInterestExpense', 'NoninterestIncome',
     'SalesRevenueNet', 'RevenueFromContractWithCustomerIncludingAssessedTax',
-    'HomeBuildingRevenue', 'RealEstateRevenueNet',
-    'Revenue',  # ifrs-full
+    'HomeBuildingRevenue', 'RealEstateRevenueNet', 'Revenue',
+    # Bank/financial-specific (IFRS)
+    'RevenueAndOperatingIncome', 'InterestRevenueExpense', 'GrossProfit',
+    'RevenueFromInterest',
 ]
-_RECENT = datetime(2024, 1, 1)
+_FORMS   = {'10-Q','10-K','20-F','40-F','6-K','6-K/A'}
+_RECENT  = datetime(2024, 1, 1)
+_RECENT2 = datetime(2022, 1, 1)
+
+def _load_fx():
+    try:
+        import urllib.request as _ur
+        r = _ur.urlopen('https://open.er-api.com/v6/latest/USD', timeout=8)
+        return json.loads(r.read())['rates']
+    except:
+        return {}
+
+_FX = _load_fx()
 
 def _best_rev_from_facts(facts_json):
-    """Scan companyfacts (USD only) and return best quarterly {Mon YYYY: $M} dict."""
+    """Scan companyfacts (USD preferred, FX fallback) and return best quarterly {Mon YYYY: $M}."""
     best_qtrs, best_latest = {}, None
     for taxonomy in ['us-gaap', 'ifrs-full']:
         tax = facts_json.get('facts', {}).get(taxonomy, {})
@@ -241,28 +256,55 @@ def _best_rev_from_facts(facts_json):
         for field in _REV_PRIORITY + extra:
             if field not in tax:
                 continue
-            entries = tax[field].get('units', {}).get('USD', [])
-            qtrs = {}
-            for e in entries:
-                if e.get('form') not in ('10-Q','10-K','20-F','40-F'):
-                    continue
-                val = e.get('val', 0)
-                if val < 1e5 or val > 5e11:
-                    continue
-                try:
-                    s  = datetime.strptime(e.get('start', e['end']), '%Y-%m-%d')
-                    en = datetime.strptime(e['end'], '%Y-%m-%d')
-                    if 75 <= (en - s).days <= 105:
-                        qtrs[en.strftime('%b %Y')] = round(val / 1e6, 1)
-                except:
-                    continue
-            if not qtrs:
-                continue
-            latest = max(datetime.strptime(k, '%b %Y') for k in qtrs)
-            if best_latest is None or latest > best_latest:
-                best_latest, best_qtrs = latest, qtrs
-            if latest >= _RECENT:
-                return best_qtrs
+            units = tax[field].get('units', {})
+            for cur in (['USD'] + [c for c in units if c != 'USD']):
+                entries = units.get(cur, [])
+                if not entries: continue
+                fx = _FX.get(cur, 1.0)
+                # --- quarterly pass (75-105 days) ---
+                qtrs = {}
+                for e in entries:
+                    if e.get('form') not in _FORMS: continue
+                    val = e.get('val', 0)
+                    if val <= 0: continue
+                    val_usd = val / fx / 1e6
+                    if val_usd < 1 or val_usd > 1e6: continue
+                    try:
+                        s  = datetime.strptime(e.get('start', e['end']), '%Y-%m-%d')
+                        en = datetime.strptime(e['end'], '%Y-%m-%d')
+                        if 75 <= (en - s).days <= 105:
+                            k = en.strftime('%b %Y')
+                            if k not in qtrs or val_usd > qtrs[k]:
+                                qtrs[k] = round(val_usd, 1)
+                    except: continue
+                if qtrs and len(qtrs) >= 2:
+                    latest = max(datetime.strptime(k, '%b %Y') for k in qtrs)
+                    if best_latest is None or latest > best_latest:
+                        best_latest, best_qtrs = latest, qtrs
+                    if latest >= _RECENT:
+                        return best_qtrs
+                # --- annual pass (330-400 days) ÷ 4 for foreign/bank filers ---
+                annual = {}
+                for e in entries:
+                    if e.get('form') not in _FORMS: continue
+                    val = e.get('val', 0)
+                    if val <= 0: continue
+                    val_usd = val / fx / 1e6
+                    if val_usd < 100 or val_usd > 1e6: continue
+                    try:
+                        s  = datetime.strptime(e.get('start', e['end']), '%Y-%m-%d')
+                        en = datetime.strptime(e['end'], '%Y-%m-%d')
+                        if 330 <= (en - s).days <= 400:
+                            k = en.strftime('%b %Y')
+                            if k not in annual or val_usd > annual[k]:
+                                annual[k] = round(val_usd / 4, 1)
+                    except: continue
+                if annual and len(annual) >= 2:
+                    latest = max(datetime.strptime(k, '%b %Y') for k in annual)
+                    if best_latest is None or latest > best_latest:
+                        best_latest, best_qtrs = latest, annual
+                    if latest >= _RECENT2:
+                        return annual
     return best_qtrs
 
 def fetch_revenue_facts(ticker):
