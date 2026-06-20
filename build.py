@@ -193,7 +193,9 @@ with open(CACHE_FILE, 'w') as f:
     json.dump(history, f)
 print(f"  Cache saved: {len(history)} tickers")
 
-# ── Revenue actuals from SEC EDGAR ────────────────────────────────────────────
+# ── Revenue actuals via yfinance ─────────────────────────────────────────────
+import yfinance as yf
+
 REV_CACHE_FILE = 'data/revenue_cache.json'
 revenue_cache = {}
 if os.path.exists(REV_CACHE_FILE):
@@ -204,126 +206,60 @@ if os.path.exists(REV_CACHE_FILE):
     except:
         pass
 
-# Load SEC ticker → CIK map (one call covers all tickers)
-cik_map = {}
-try:
-    req = urllib.request.Request(
-        'https://www.sec.gov/files/company_tickers.json',
-        headers={'User-Agent': 'retail.picksllc@gmail.com'}
-    )
-    with urllib.request.urlopen(req, timeout=15) as r:
-        tickers_data = json.loads(r.read())
-    cik_map = {v['ticker']: str(v['cik_str']).zfill(10) for v in tickers_data.values()}
-    print(f"  SEC CIK map: {len(cik_map)} tickers")
-except Exception as e:
-    print(f"  SEC CIK map failed: {e}")
-
-import re as _re
-
-_REV_PRIORITY = [
-    # Standard US-GAAP / IFRS revenue fields
-    'RevenueFromContractWithCustomerExcludingAssessedTax',
-    'Revenues', 'RevenuesNetOfInterestExpense', 'NoninterestIncome',
-    'SalesRevenueNet', 'RevenueFromContractWithCustomerIncludingAssessedTax',
-    'HomeBuildingRevenue', 'RealEstateRevenueNet', 'Revenue',
-    # Bank/financial-specific (IFRS)
-    'RevenueAndOperatingIncome', 'InterestRevenueExpense', 'GrossProfit',
-    'RevenueFromInterest',
-]
-_FORMS   = {'10-Q','10-K','20-F','40-F','6-K','6-K/A'}
-_RECENT  = datetime(2024, 1, 1)
-_RECENT2 = datetime(2022, 1, 1)
-
 def _load_fx():
     try:
-        import urllib.request as _ur
-        r = _ur.urlopen('https://open.er-api.com/v6/latest/USD', timeout=8)
+        r = urllib.request.urlopen('https://open.er-api.com/v6/latest/USD', timeout=8)
         return json.loads(r.read())['rates']
     except:
         return {}
 
 _FX = _load_fx()
 
-def _best_rev_from_facts(facts_json):
-    """Scan companyfacts (USD preferred, FX fallback) and return best quarterly {Mon YYYY: $M}."""
-    best_qtrs, best_latest = {}, None
-    for taxonomy in ['us-gaap', 'ifrs-full']:
-        tax = facts_json.get('facts', {}).get(taxonomy, {})
-        extra = sorted([f for f in tax if f not in _REV_PRIORITY and
-            _re.search(r'Revenue|SalesRevenue|NetSales|TotalRevenue', f) and
-            not _re.search(r'Cost|Deferred|Unearned|Backlog|Remaining|'
-                           r'Disaggregat|Recognition|Capitalized|Adjustments', f)])
-        for field in _REV_PRIORITY + extra:
-            if field not in tax:
-                continue
-            units = tax[field].get('units', {})
-            for cur in (['USD'] + [c for c in units if c != 'USD']):
-                entries = units.get(cur, [])
-                if not entries: continue
-                fx = _FX.get(cur, 1.0)
-                # --- quarterly pass (75-105 days) ---
-                qtrs = {}
-                for e in entries:
-                    if e.get('form') not in _FORMS: continue
-                    val = e.get('val', 0)
-                    if val <= 0: continue
-                    val_usd = val / fx / 1e6
-                    if val_usd < 1 or val_usd > 1e6: continue
-                    try:
-                        s  = datetime.strptime(e.get('start', e['end']), '%Y-%m-%d')
-                        en = datetime.strptime(e['end'], '%Y-%m-%d')
-                        if 75 <= (en - s).days <= 105:
-                            k = en.strftime('%b %Y')
-                            if k not in qtrs or val_usd > qtrs[k]:
-                                qtrs[k] = round(val_usd, 1)
-                    except: continue
-                if qtrs and len(qtrs) >= 2:
-                    latest = max(datetime.strptime(k, '%b %Y') for k in qtrs)
-                    if best_latest is None or latest > best_latest:
-                        best_latest, best_qtrs = latest, qtrs
-                    if latest >= _RECENT:
-                        return best_qtrs
-                # --- annual pass (330-400 days) ÷ 4 for foreign/bank filers ---
-                annual = {}
-                for e in entries:
-                    if e.get('form') not in _FORMS: continue
-                    val = e.get('val', 0)
-                    if val <= 0: continue
-                    val_usd = val / fx / 1e6
-                    if val_usd < 100 or val_usd > 1e6: continue
-                    try:
-                        s  = datetime.strptime(e.get('start', e['end']), '%Y-%m-%d')
-                        en = datetime.strptime(e['end'], '%Y-%m-%d')
-                        if 330 <= (en - s).days <= 400:
-                            k = en.strftime('%b %Y')
-                            if k not in annual or val_usd > annual[k]:
-                                annual[k] = round(val_usd / 4, 1)
-                    except: continue
-                if annual and len(annual) >= 2:
-                    latest = max(datetime.strptime(k, '%b %Y') for k in annual)
-                    if best_latest is None or latest > best_latest:
-                        best_latest, best_qtrs = latest, annual
-                    if latest >= _RECENT2:
-                        return annual
-    return best_qtrs
-
-def fetch_revenue_facts(ticker):
-    """Fetch revenue via companyfacts (one call covers all fields)."""
-    if ticker in revenue_cache:
-        return ticker, revenue_cache[ticker]
-    cik = cik_map.get(ticker)
-    if not cik:
-        return ticker, {}
+def _yf_revenue(ticker):
+    """Fetch quarterly revenue via yfinance. Returns {Mon YYYY: $M USD}."""
     try:
-        url = f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json'
-        req = urllib.request.Request(url, headers={'User-Agent': 'retail.picksllc@gmail.com'})
-        with urllib.request.urlopen(req, timeout=20) as r:
-            facts = json.loads(r.read())
-        return ticker, _best_rev_from_facts(facts)
-    except:
-        return ticker, {}
+        t = yf.Ticker(ticker)
+        stmt = t.quarterly_income_stmt
+        if stmt is None or stmt.empty:
+            return {}
+        rev_row = None
+        for label in ['Total Revenue', 'Revenue', 'Net Revenue', 'Gross Profit']:
+            if label in stmt.index:
+                rev_row = stmt.loc[label]
+                break
+        if rev_row is None:
+            return {}
+        # FX conversion using financialCurrency
+        try:
+            fc = (t.fast_info.get('currency') or
+                  t.info.get('financialCurrency') or 'USD')
+        except:
+            fc = 'USD'
+        # fast_info.currency is the trading currency (always USD for ADRs)
+        # We need financialCurrency for the actual reporting currency
+        try:
+            fc2 = t.info.get('financialCurrency', fc)
+            if fc2: fc = fc2
+        except:
+            pass
+        fx = _FX.get(fc, 1.0) if fc != 'USD' else 1.0
+        result = {}
+        for dt, val in rev_row.dropna().items():
+            if not val or val <= 0: continue
+            val_usd = val / fx / 1e6
+            if val_usd < 1 or val_usd > 2e6: continue
+            try:
+                key = dt.strftime('%b %Y') if hasattr(dt, 'strftime') else (
+                    datetime.strptime(str(dt)[:7], '%Y-%m').strftime('%b %Y'))
+                result[key] = round(val_usd, 1)
+            except:
+                continue
+        return result
+    except Exception as e:
+        return {}
 
 def rev_is_stale(ticker):
+    """True if cache is missing or more than 3 months behind history."""
     if ticker not in revenue_cache or not revenue_cache[ticker]:
         return True
     hist_quarters = history.get(ticker, [])
@@ -333,26 +269,27 @@ def rev_is_stale(ticker):
         latest_rev  = max(datetime.strptime(k, '%b %Y') for k in revenue_cache[ticker])
         latest_hist = max(datetime.strptime(q['fiscalQtrEnd'], '%b %Y')
                          for q in hist_quarters if q.get('fiscalQtrEnd'))
-        return ((latest_hist.year - latest_rev.year)*12 +
-                (latest_hist.month - latest_rev.month)) > 6
+        return ((latest_hist.year - latest_rev.year) * 12 +
+                (latest_hist.month - latest_rev.month)) > 3
     except:
         return False
 
-# Fetch for all tickers in history (not just top_tickers — catches past calendar tickers)
 all_rev_tickers = list(set(top_tickers) | set(history.keys()))
 tickers_needing_rev = [t for t in all_rev_tickers if rev_is_stale(t)]
-print(f"Fetching revenue for {len(tickers_needing_rev)} tickers via SEC companyfacts...")
+print(f"Fetching revenue for {len(tickers_needing_rev)} tickers via yfinance...")
 revenue_data = dict(revenue_cache)
-for t in tickers_needing_rev:
-    revenue_data.pop(t, None)
-    revenue_cache.pop(t, None)
-with ThreadPoolExecutor(max_workers=15) as ex:
-    for ticker, qtrs in ex.map(fetch_revenue_facts, tickers_needing_rev, timeout=180):
+
+def _fetch_one(ticker):
+    qtrs = _yf_revenue(ticker)
+    return ticker, qtrs
+
+with ThreadPoolExecutor(max_workers=8) as ex:
+    for ticker, qtrs in ex.map(_fetch_one, tickers_needing_rev, timeout=300):
         if qtrs:
             revenue_data[ticker] = qtrs
 
 # Merge revenue into history — nearest-quarter match with fallback
-# 1. Exact match  2. ±2 months (handles 6-K offset)  3. Most recent prior value (handles stale EDGAR data)
+# 1. Exact match  2. ±2 months (handles fiscal offset)  3. Most recent prior value (≤18 months)
 def _nearest_rev(rev_dict, fqe):
     if not rev_dict or not fqe:
         return None
@@ -360,14 +297,12 @@ def _nearest_rev(rev_dict, fqe):
         return rev_dict[fqe]
     try:
         target = datetime.strptime(fqe, '%b %Y')
-        # Pass 1: within ±2 months
         best_close_val, best_close_diff = None, 999
-        # Pass 2: most recent entry BEFORE the target (up to 18 months old)
         best_prior_val, best_prior_diff = None, 999
         for k, v in rev_dict.items():
             try:
                 kdt = datetime.strptime(k, '%b %Y')
-                diff = abs((kdt.year - target.year) * 12 + (kdt.month - target.month))
+                diff   = abs((kdt.year - target.year) * 12 + (kdt.month - target.month))
                 signed = (target.year - kdt.year) * 12 + (target.month - kdt.month)
                 if diff <= 2 and diff < best_close_diff:
                     best_close_diff, best_close_val = diff, v
@@ -384,11 +319,11 @@ for ticker, quarters in history.items():
     for q in quarters:
         q['revActual'] = _nearest_rev(rev, q.get('fiscalQtrEnd', ''))
 
-# Save revenue cache
 os.makedirs('data', exist_ok=True)
 with open(REV_CACHE_FILE, 'w') as f:
     json.dump(revenue_data, f)
 print(f"  Revenue cache saved: {len(revenue_data)} tickers")
+
 
 # ── 3. News ───────────────────────────────────────────────────────────────────
 def strip_html(t):
