@@ -218,54 +218,68 @@ try:
 except Exception as e:
     print(f"  SEC CIK map failed: {e}")
 
-REV_FIELDS = [
-    'RevenueFromContractWithCustomerExcludingAssessedTax',
-    'Revenues',
-    'RevenuesNetOfInterestExpense',
-    'NoninterestIncome',
-    'SalesRevenueNet',
-    'RevenueFromContractWithCustomerIncludingAssessedTax',
-    'OtherIncome',
-]
+import re as _re
 
-def fetch_revenue_sec(ticker):
+_REV_PRIORITY = [
+    'RevenueFromContractWithCustomerExcludingAssessedTax',
+    'Revenues', 'RevenuesNetOfInterestExpense', 'NoninterestIncome',
+    'SalesRevenueNet', 'RevenueFromContractWithCustomerIncludingAssessedTax',
+    'HomeBuildingRevenue', 'RealEstateRevenueNet',
+    'Revenue',  # ifrs-full
+]
+_RECENT = datetime(2024, 1, 1)
+
+def _best_rev_from_facts(facts_json):
+    """Scan companyfacts (USD only) and return best quarterly {Mon YYYY: $M} dict."""
+    best_qtrs, best_latest = {}, None
+    for taxonomy in ['us-gaap', 'ifrs-full']:
+        tax = facts_json.get('facts', {}).get(taxonomy, {})
+        extra = sorted([f for f in tax if f not in _REV_PRIORITY and
+            _re.search(r'Revenue|SalesRevenue|NetSales|TotalRevenue', f) and
+            not _re.search(r'Cost|Deferred|Unearned|Backlog|Remaining|'
+                           r'Disaggregat|Recognition|Capitalized|Adjustments', f)])
+        for field in _REV_PRIORITY + extra:
+            if field not in tax:
+                continue
+            entries = tax[field].get('units', {}).get('USD', [])
+            qtrs = {}
+            for e in entries:
+                if e.get('form') not in ('10-Q','10-K','20-F','40-F'):
+                    continue
+                val = e.get('val', 0)
+                if val < 1e5 or val > 5e11:
+                    continue
+                try:
+                    s  = datetime.strptime(e.get('start', e['end']), '%Y-%m-%d')
+                    en = datetime.strptime(e['end'], '%Y-%m-%d')
+                    if 75 <= (en - s).days <= 105:
+                        qtrs[en.strftime('%b %Y')] = round(val / 1e6, 1)
+                except:
+                    continue
+            if not qtrs:
+                continue
+            latest = max(datetime.strptime(k, '%b %Y') for k in qtrs)
+            if best_latest is None or latest > best_latest:
+                best_latest, best_qtrs = latest, qtrs
+            if latest >= _RECENT:
+                return best_qtrs
+    return best_qtrs
+
+def fetch_revenue_facts(ticker):
+    """Fetch revenue via companyfacts (one call covers all fields)."""
     if ticker in revenue_cache:
         return ticker, revenue_cache[ticker]
     cik = cik_map.get(ticker)
     if not cik:
         return ticker, {}
-    best_qtrs = {}
-    best_latest = None
-    RECENT = datetime(2024, 1, 1)
-    for field in REV_FIELDS:
-        try:
-            url = f'https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/us-gaap/{field}.json'
-            req = urllib.request.Request(url, headers={'User-Agent': 'retail.picksllc@gmail.com'})
-            with urllib.request.urlopen(req, timeout=8) as r:
-                data = json.loads(r.read())
-            entries = data.get('units', {}).get('USD', [])
-            qtrs = {}
-            for e in entries:
-                if e.get('form') not in ('10-Q', '10-K'):
-                    continue
-                try:
-                    start = datetime.strptime(e.get('start', e['end']), '%Y-%m-%d')
-                    end   = datetime.strptime(e['end'], '%Y-%m-%d')
-                    if 75 <= (end - start).days <= 105:
-                        key = end.strftime('%b %Y')
-                        qtrs[key] = round(e['val'] / 1e6, 1)
-                except:
-                    continue
-            if qtrs:
-                latest = max(datetime.strptime(k, '%b %Y') for k in qtrs)
-                if best_latest is None or latest > best_latest:
-                    best_latest = latest
-                    best_qtrs = qtrs
-                if latest >= RECENT:
-                    break  # Recent data found — stop trying more fields
-        except:
-            continue
-    return ticker, best_qtrs
+    try:
+        url = f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json'
+        req = urllib.request.Request(url, headers={'User-Agent': 'retail.picksllc@gmail.com'})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            facts = json.loads(r.read())
+        return ticker, _best_rev_from_facts(facts)
+    except:
+        return ticker, {}
 
 def rev_is_stale(ticker):
     if ticker not in revenue_cache or not revenue_cache[ticker]:
@@ -282,15 +296,16 @@ def rev_is_stale(ticker):
     except:
         return False
 
-tickers_needing_rev = [t for t in top_tickers if rev_is_stale(t)]
-print(f"Fetching revenue for {len(tickers_needing_rev)} tickers from SEC EDGAR (stale or missing)...")
+# Fetch for all tickers in history (not just top_tickers — catches past calendar tickers)
+all_rev_tickers = list(set(top_tickers) | set(history.keys()))
+tickers_needing_rev = [t for t in all_rev_tickers if rev_is_stale(t)]
+print(f"Fetching revenue for {len(tickers_needing_rev)} tickers via SEC companyfacts...")
 revenue_data = dict(revenue_cache)
-# Clear stale entries so fetch_revenue_sec doesn't skip them
 for t in tickers_needing_rev:
     revenue_data.pop(t, None)
     revenue_cache.pop(t, None)
-with ThreadPoolExecutor(max_workers=20) as ex:
-    for ticker, qtrs in ex.map(fetch_revenue_sec, top_tickers, timeout=200):
+with ThreadPoolExecutor(max_workers=15) as ex:
+    for ticker, qtrs in ex.map(fetch_revenue_facts, tickers_needing_rev, timeout=180):
         if qtrs:
             revenue_data[ticker] = qtrs
 
