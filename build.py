@@ -351,11 +351,38 @@ with ThreadPoolExecutor(max_workers=15) as ex:
         if qtrs:
             revenue_data[ticker] = qtrs
 
-# Merge revenue into history entries
+# Merge revenue into history — nearest-quarter match with fallback
+# 1. Exact match  2. ±2 months (handles 6-K offset)  3. Most recent prior value (handles stale EDGAR data)
+def _nearest_rev(rev_dict, fqe):
+    if not rev_dict or not fqe:
+        return None
+    if fqe in rev_dict:
+        return rev_dict[fqe]
+    try:
+        target = datetime.strptime(fqe, '%b %Y')
+        # Pass 1: within ±2 months
+        best_close_val, best_close_diff = None, 999
+        # Pass 2: most recent entry BEFORE the target (up to 18 months old)
+        best_prior_val, best_prior_diff = None, 999
+        for k, v in rev_dict.items():
+            try:
+                kdt = datetime.strptime(k, '%b %Y')
+                diff = abs((kdt.year - target.year) * 12 + (kdt.month - target.month))
+                signed = (target.year - kdt.year) * 12 + (target.month - kdt.month)
+                if diff <= 2 and diff < best_close_diff:
+                    best_close_diff, best_close_val = diff, v
+                if 0 < signed <= 18 and signed < best_prior_diff:
+                    best_prior_diff, best_prior_val = signed, v
+            except:
+                continue
+        return best_close_val if best_close_val is not None else best_prior_val
+    except:
+        return None
+
 for ticker, quarters in history.items():
     rev = revenue_data.get(ticker, {})
     for q in quarters:
-        q['revActual'] = rev.get(q.get('fiscalQtrEnd', ''))
+        q['revActual'] = _nearest_rev(rev, q.get('fiscalQtrEnd', ''))
 
 # Save revenue cache
 os.makedirs('data', exist_ok=True)
