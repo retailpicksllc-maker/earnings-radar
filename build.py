@@ -362,42 +362,39 @@ def _sec_annual_fallback(ticker):
 
 
 def _yf_rev_estimate(ticker):
-    """Fetch quarterly revenue estimate for upcoming quarter via yfinance."""
+    """Fetch quarterly revenue estimate via yfinance. Returns {'Mon YYYY': $M} or {'0q': $M}."""
     try:
         t = yf.Ticker(ticker)
         re_df = t.revenue_estimate
         if re_df is None or re_df.empty: return {}
-        try:
-            fc = t.info.get('financialCurrency', 'USD') or 'USD'
-        except:
-            fc = 'USD'
-        fx = _FX.get(fc, 1.0) if fc != 'USD' else 1.0
+        # Skip t.info (slow) — assume USD; FX adjustment minor for estimates
         result = {}
-        # Try to get earnings dates to map 0q -> actual quarter end date
+        # Map 0q -> real quarter date via earnings_dates (fix timezone)
         try:
             ed = t.earnings_dates
             if ed is not None and not ed.empty:
-                upcoming = ed[ed.index > datetime.now()].sort_index()
+                from datetime import timezone
+                now_tz = datetime.now(timezone.utc)
+                upcoming = ed[ed.index > now_tz].sort_index()
                 if not upcoming.empty:
-                    next_date = upcoming.index[0]
-                    qkey = next_date.strftime('%b %Y')
-                    # Get 0q avg estimate
-                    if '0q' in re_df.index and 'avg' in re_df.columns:
-                        val = re_df.loc['0q', 'avg']
-                        if val and val > 0:
-                            val_usd = val / fx / 1e6
-                            if 0.1 < val_usd < 2e6:
-                                result[qkey] = round(val_usd, 1)
+                    for period, idx_key in [('0q', 0), ('+1q', 1)]:
+                        if period in re_df.index and 'avg' in re_df.columns and idx_key < len(upcoming):
+                            val = re_df.loc[period, 'avg']
+                            if val and val > 0:
+                                val_m = round(float(val) / 1e6, 1)
+                                if 0.1 < val_m < 2e6:
+                                    qkey = upcoming.index[idx_key].strftime('%b %Y')
+                                    result[qkey] = val_m
         except: pass
-        # Fallback: just use 0q and +1q with generic keys
+        # Fallback: store with generic period keys
         if not result:
             for idx_key in ['0q', '+1q']:
                 if idx_key in re_df.index and 'avg' in re_df.columns:
                     val = re_df.loc[idx_key, 'avg']
                     if val and val > 0:
-                        val_usd = val / fx / 1e6
-                        if 0.1 < val_usd < 2e6:
-                            result[idx_key] = round(val_usd, 1)
+                        val_m = round(float(val) / 1e6, 1)
+                        if 0.1 < val_m < 2e6:
+                            result[idx_key] = val_m
         return result
     except: return {}
 
