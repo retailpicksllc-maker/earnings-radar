@@ -362,7 +362,8 @@ def _sec_annual_fallback(ticker):
 
 
 def _yf_rev_estimate(ticker):
-    """Fetch quarterly revenue estimate for upcoming quarter via yfinance."""    try:
+    """Fetch quarterly revenue estimate for upcoming quarter via yfinance."""
+    try:
         t = yf.Ticker(ticker)
         re_df = t.revenue_estimate
         if re_df is None or re_df.empty: return {}
