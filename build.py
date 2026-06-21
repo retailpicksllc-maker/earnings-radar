@@ -94,25 +94,23 @@ def parse_mcap(s):
     try: return float(s.replace('$', '').replace(',', ''))
     except: return 0
 
-all_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
-                 for rows in earnings.values() for r in rows]
-seen = set()
-top_tickers = []
-for mc, sym in sorted(all_rows_flat, reverse=True):
-    if sym and sym not in seen and mc > 1e9:
-        seen.add(sym)
-        top_tickers.append(sym)
-    if len(top_tickers) >= 200:
-        break
-
-# Add top past tickers by market cap (for revenue lookup on past calendar dates)
+# All upcoming tickers + all recent past tickers (last 28 days) for revenue lookup
+top_tickers = list({r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')})
+recent_cutoff = (datetime.now() - timedelta(days=28)).strftime('%Y-%m-%d')
+for iso, rows in past_earnings.items():
+    if iso >= recent_cutoff:
+        for r in rows:
+            if r.get('symbol') and r['symbol'] not in top_tickers:
+                top_tickers.append(r['symbol'])
+# Also add top historical tickers by market cap (up to 300 more)
 past_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
                   for rows in past_earnings.values() for r in rows]
+seen_top = set(top_tickers)
 for mc, sym in sorted(past_rows_flat, reverse=True):
-    if sym and sym not in seen and mc > 10e9:
-        seen.add(sym)
+    if sym and sym not in seen_top and mc > 5e9:
+        seen_top.add(sym)
         top_tickers.append(sym)
-    if len(top_tickers) >= 300:
+    if len(top_tickers) >= 800:
         break
 
 # Load cached history (accumulates 3+ years over time)
@@ -453,6 +451,7 @@ output = (template
     .replace('__PAST_EARNINGS_JS__', json.dumps(past_earnings, ensure_ascii=False))
     .replace('__EARNINGS_JS__', json.dumps(earnings,   ensure_ascii=False))
     .replace('__HISTORY_JS__',  json.dumps(history,    ensure_ascii=False))
+    .replace('__REVENUE_JS__',  json.dumps(revenue_data, ensure_ascii=False))
     .replace('__NEWS_JS__',     json.dumps(news,       ensure_ascii=False))
     .replace('__META_JS__',     json.dumps(stock_meta, ensure_ascii=False))
     .replace('__BUILT_AT__',    json.dumps(built_at)))

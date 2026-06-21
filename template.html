@@ -252,6 +252,7 @@ table.ht{width:100%;border-collapse:collapse;font-size:11px}
 const DATA=__EARNINGS_JS__;
 const PAST_DATA=__PAST_EARNINGS_JS__;
 const HISTORY=__HISTORY_JS__;
+const REVENUE=__REVENUE_JS__;
 const NEWS=__NEWS_JS__;
 const META=__META_JS__;
 const BUILT_AT=__BUILT_AT__;
@@ -488,7 +489,25 @@ function openStock(sym){
   document.getElementById('sdWhen').textContent=whenStr;
 
   // Populate REV/EPS card
-  const revAct=q0.revActual||null;
+  // Try revActual from history; fall back to REVENUE cache nearest-quarter lookup
+  function _nearestRev(dict, fqe){
+    if(!dict||!fqe)return null;
+    if(dict[fqe]!=null)return dict[fqe];
+    try{
+      const target=new Date('01 '+fqe);
+      let bestClose=null,bestCloseDiff=999,bestPrior=null,bestPriorDiff=999;
+      for(const[k,v] of Object.entries(dict)){
+        const kd=new Date('01 '+k);
+        const diff=Math.abs((kd.getFullYear()-target.getFullYear())*12+(kd.getMonth()-target.getMonth()));
+        const signed=(target.getFullYear()-kd.getFullYear())*12+(target.getMonth()-kd.getMonth());
+        if(diff<=2&&diff<bestCloseDiff){bestCloseDiff=diff;bestClose=v;}
+        if(signed>0&&signed<=18&&signed<bestPriorDiff){bestPriorDiff=signed;bestPrior=v;}
+      }
+      return bestClose!=null?bestClose:bestPrior;
+    }catch{return null;}
+  }
+  const _revDict=REVENUE[sym]||null;
+  const revAct=q0.revActual||_nearestRev(_revDict, q0.fiscalQtrEnd)||null;
   const epsAct=q0.eps!=null?parseFloat(q0.eps):null;
   const epsEst=q0.consensusForecast!=null?parseFloat(q0.consensusForecast):null;
   const epsSurp=q0.percentageSurprise!==''?parseFloat(q0.percentageSurprise):null;
@@ -518,7 +537,10 @@ function openStock(sym){
   // Summary metrics strip
   const mc=pmcap((Object.values(PAST_DATA).flatMap(r=>r).find(r=>r.symbol===sym)||{}).marketCap||'')||
             pmcap((Object.values(DATA).flatMap(r=>r).find(r=>r.symbol===sym)||{}).marketCap||'');
-  const revTTM=hist.slice(0,4).reduce((s,q)=>s+(q.revActual||0),0)||0;
+  const revTTM=hist.slice(0,4).reduce((s,q)=>{
+    const rv=q.revActual!=null?q.revActual:_nearestRev(_revDict,q.fiscalQtrEnd);
+    return s+(rv||0);
+  },0)||0;
   const epsTTM=hist.slice(0,4).reduce((s,q)=>s+(parseFloat(q.eps)||0),0)||0;
   const beatQ=hist.filter(q=>parseFloat(q.percentageSurprise)>0);
   const totQ=hist.filter(q=>q.percentageSurprise!=='');
@@ -548,7 +570,7 @@ function buildEarnings(sym,hist,m){
   }
   if(!hist.length){pane.innerHTML=html+'<div class="no-data">No earnings history</div>';return;}
   const display=hist.slice(0,12);
-  const hasRev=display.some(q=>q.revActual!=null&&q.revActual>0);
+  const hasRev=display.some(q=>(q.revActual!=null&&q.revActual>0)||(_nearestRev(_revDict,q.fiscalQtrEnd)!=null));
   const beats=display.filter(q=>parseFloat(q.percentageSurprise)>0).length;
   const tot=display.filter(q=>q.percentageSurprise!=='').length;
 
@@ -573,7 +595,7 @@ function buildEarnings(sym,hist,m){
       <td class="r" style="font-weight:600">${q.eps!=null?'$'+parseFloat(q.eps).toFixed(2):'—'}</td>
       <td class="r" style="color:var(--muted)">${q.consensusForecast?'$'+parseFloat(q.consensusForecast).toFixed(2):'—'}</td>
       <td class="r"><span class="${cls}">${q.percentageSurprise!==''?(s>0?'+':'')+s.toFixed(1)+'%':'—'}</span></td>
-      ${hasRev?`<td class="r" style="color:var(--blue)">${fmtM(q.revActual)}</td>`:''}
+      ${hasRev?`<td class="r" style="color:var(--blue)">${fmtM(q.revActual!=null?q.revActual:_nearestRev(_revDict,q.fiscalQtrEnd))}</td>`:''}
     </tr>`;}).join('')}</tbody></table></div>`;
   pane.innerHTML=html;
   setTimeout(()=>drawChart(sym,display,hasRev),60);
@@ -593,7 +615,7 @@ function drawChart(sym,data,hasRev){
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
   const gW=cW/N;
   const bW=Math.max(Math.floor(gW*.65),4);
-  const maxRev=hasRev?Math.max(...pts.map(q=>q.revActual||0),1):0;
+  const maxRev=hasRev?Math.max(...pts.map(q=>q.revActual!=null?q.revActual:(_nearestRev(_revDict,q.fiscalQtrEnd)||0)),1):0;
   const maxEps=Math.max(...pts.flatMap(q=>[Math.abs(parseFloat(q.eps)||0),Math.abs(parseFloat(q.consensusForecast)||0)]),0.01);
   // Grid lines
   for(let i=0;i<=4;i++){
@@ -611,7 +633,7 @@ function drawChart(sym,data,hasRev){
     const eps=parseFloat(q.eps)||0;
     const est=parseFloat(q.consensusForecast)||0;
     const surp=parseFloat(q.percentageSurprise)||0;
-    const rev=q.revActual||0;
+    const rev=q.revActual!=null?q.revActual:(_nearestRev(_revDict,q.fiscalQtrEnd)||0);
     // Rev bar
     if(hasRev&&rev>0){
       const rh=Math.max((rev/maxRev)*cH,2);
