@@ -279,8 +279,65 @@ tickers_needing_rev = [t for t in all_rev_tickers if rev_is_stale(t)]
 print(f"Fetching revenue for {len(tickers_needing_rev)} tickers via yfinance...")
 revenue_data = dict(revenue_cache)
 
+# SEC EDGAR CIK map (used as fallback for annual-only filers)
+_cik_map = {}
+try:
+    _req = urllib.request.Request('https://www.sec.gov/files/company_tickers.json',
+                                  headers={'User-Agent': 'retail.picksllc@gmail.com'})
+    _cik_map = {v['ticker']: str(v['cik_str']).zfill(10)
+                for v in json.loads(urllib.request.urlopen(_req, timeout=15).read()).values()}
+except: pass
+
+def _sec_annual_fallback(ticker):
+    """For tickers with no yfinance revenue: try SEC annual (20-F/10-K) ÷ 4, expand to 4 quarters."""
+    cik = _cik_map.get(ticker)
+    if not cik: return {}
+    try:
+        url = f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json'
+        req = urllib.request.Request(url, headers={'User-Agent': 'retail.picksllc@gmail.com'})
+        facts = json.loads(urllib.request.urlopen(req, timeout=20).read())
+        annual = {}
+        for taxonomy in ['us-gaap', 'ifrs-full']:
+            tax = facts.get('facts', {}).get(taxonomy, {})
+            for field in ['Revenue', 'Revenues', 'RentalIncome',
+                          'RevenueFromContractWithCustomerExcludingAssessedTax',
+                          'SalesRevenueNet', 'NoninterestIncome']:
+                if field not in tax: continue
+                for cur, entries in tax[field].get('units', {}).items():
+                    fx = _FX.get(cur, 1.0) if cur != 'USD' else 1.0
+                    for e in entries:
+                        if e.get('form') not in ('10-K', '20-F', '40-F'): continue
+                        val = e.get('val', 0)
+                        if val <= 0: continue
+                        val_usd = val / fx / 1e6
+                        if val_usd < 1 or val_usd > 2e6: continue
+                        try:
+                            s = datetime.strptime(e.get('start', e['end']), '%Y-%m-%d')
+                            en = datetime.strptime(e['end'], '%Y-%m-%d')
+                            if 330 <= (en - s).days <= 400:
+                                k = en.strftime('%b %Y')
+                                if k not in annual or val_usd > annual[k]:
+                                    annual[k] = round(val_usd / 4, 1)
+                        except: continue
+                if annual: break
+            if annual: break
+        # Expand annual entries to all 4 quarters of that year
+        result = {}
+        for key, val in annual.items():
+            end = datetime.strptime(key, '%b %Y')
+            for offset in [0, -3, -6, -9]:
+                mo = ((end.month - 1 + offset) % 12) + 1
+                yr = end.year + ((end.month - 1 + offset) // 12)
+                k = datetime(yr, mo, 1).strftime('%b %Y')
+                if k not in result:
+                    result[k] = val
+        return result
+    except: return {}
+
 def _fetch_one(ticker):
     qtrs = _yf_revenue(ticker)
+    if not qtrs:
+        qtrs = _sec_annual_fallback(ticker)
     return ticker, qtrs
 
 with ThreadPoolExecutor(max_workers=8) as ex:
