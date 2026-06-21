@@ -159,6 +159,11 @@ table.ht{width:100%;border-collapse:collapse;font-size:11px}
 .uc-v{font-size:12px;font-weight:600;color:var(--accent2);margin-top:2px}
 .uc-big{font-size:18px;font-weight:800;color:var(--accent2);margin-top:2px}
 .no-data{padding:20px;text-align:center;color:var(--faint);font-size:12px}
+/* Live price strip in card */
+.ec-price-strip{display:flex;align-items:baseline;gap:8px;padding:0 14px 10px;border-bottom:1px solid var(--border)}
+.ec-price-val{font-size:22px;font-weight:800;color:var(--text)}
+.ec-price-chg{font-size:13px;font-weight:700}
+.ec-price-loading{font-size:12px;color:var(--faint);padding:0 14px 10px}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
@@ -216,6 +221,7 @@ table.ht{width:100%;border-collapse:collapse;font-size:11px}
           </div>
           <button class="ec-card-x" onclick="closeDetail()">&#10005;</button>
         </div>
+        <div id="ecPriceStrip" class="ec-price-loading">Loading price…</div>
         <div class="ec-card-tabs">
           <div class="ec-card-tab on">Results</div>
           <div class="ec-card-tab">Price Move <span class="pro-badge">Pro</span></div>
@@ -528,6 +534,7 @@ function openStock(sym){
   switchTab(0,document.querySelector('.sd-tab'));
   buildEarnings(sym,hist,m);
   buildNews(sym);
+  fetchLivePrice(sym);
 }
 
 function buildEarnings(sym,hist,m){
@@ -681,6 +688,31 @@ function setMkt(){
   if(dot){dot.className='market-dot'+(open?' open':'');}
   const txt=document.getElementById('mktTxt');
   if(txt){txt.textContent=open?'Market Open':'Market Closed';}
+}
+
+// Live price for individual ticker
+async function fetchLivePrice(sym){
+  const el=document.getElementById('ecPriceStrip');
+  if(!el)return;
+  el.className='ec-price-loading';
+  el.textContent='Loading price…';
+  try{
+    // Yahoo Finance quote API (works browser-side, 15-min delayed outside market hours)
+    const r=await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1d`,
+      {headers:{Accept:'application/json'}});
+    const d=await r.json();
+    const meta=d?.chart?.result?.[0]?.meta;
+    if(!meta){el.textContent='';return;}
+    const price=meta.regularMarketPrice||meta.previousClose;
+    const prev=meta.previousClose||meta.chartPreviousClose;
+    const chg=price&&prev?price-prev:null;
+    const pct=chg&&prev?(chg/prev*100):null;
+    const up=chg!=null&&chg>=0;
+    el.className='ec-price-strip';
+    el.innerHTML=`<span class="ec-price-val">$${price!=null?price.toFixed(2):'—'}</span>`+
+      (pct!=null?`<span class="ec-price-chg ${up?'up':'dn'}">${up?'+':''}${chg.toFixed(2)} (${up?'+':''}${pct.toFixed(2)}%)</span>`:'');
+  }catch{el.textContent='';}
 }
 
 // Prices
