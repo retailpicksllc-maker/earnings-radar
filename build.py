@@ -214,12 +214,21 @@ print(f"  Cache saved: {len(history)} tickers")
 import yfinance as yf
 
 REV_CACHE_FILE = 'data/revenue_cache.json'
+REV_EST_CACHE_FILE = 'data/rev_est_cache.json'
 revenue_cache = {}
+rev_est_cache = {}
 if os.path.exists(REV_CACHE_FILE):
     try:
         with open(REV_CACHE_FILE) as f:
             revenue_cache = json.load(f)
         print(f"  Loaded revenue cache: {len(revenue_cache)} tickers")
+    except:
+        pass
+if os.path.exists(REV_EST_CACHE_FILE):
+    try:
+        with open(REV_EST_CACHE_FILE) as f:
+            rev_est_cache = json.load(f)
+        print(f"  Loaded rev estimate cache: {len(rev_est_cache)} tickers")
     except:
         pass
 
@@ -351,16 +360,60 @@ def _sec_annual_fallback(ticker):
         return result
     except: return {}
 
+
+def _yf_rev_estimate(ticker):
+    """Fetch quarterly revenue estimate for upcoming quarter via yfinance."""    try:
+        t = yf.Ticker(ticker)
+        re_df = t.revenue_estimate
+        if re_df is None or re_df.empty: return {}
+        try:
+            fc = t.info.get('financialCurrency', 'USD') or 'USD'
+        except:
+            fc = 'USD'
+        fx = _FX.get(fc, 1.0) if fc != 'USD' else 1.0
+        result = {}
+        # Try to get earnings dates to map 0q -> actual quarter end date
+        try:
+            ed = t.earnings_dates
+            if ed is not None and not ed.empty:
+                upcoming = ed[ed.index > datetime.now()].sort_index()
+                if not upcoming.empty:
+                    next_date = upcoming.index[0]
+                    qkey = next_date.strftime('%b %Y')
+                    # Get 0q avg estimate
+                    if '0q' in re_df.index and 'avg' in re_df.columns:
+                        val = re_df.loc['0q', 'avg']
+                        if val and val > 0:
+                            val_usd = val / fx / 1e6
+                            if 0.1 < val_usd < 2e6:
+                                result[qkey] = round(val_usd, 1)
+        except: pass
+        # Fallback: just use 0q and +1q with generic keys
+        if not result:
+            for idx_key in ['0q', '+1q']:
+                if idx_key in re_df.index and 'avg' in re_df.columns:
+                    val = re_df.loc[idx_key, 'avg']
+                    if val and val > 0:
+                        val_usd = val / fx / 1e6
+                        if 0.1 < val_usd < 2e6:
+                            result[idx_key] = round(val_usd, 1)
+        return result
+    except: return {}
+
 def _fetch_one(ticker):
     qtrs = _yf_revenue(ticker)
     if not qtrs:
         qtrs = _sec_annual_fallback(ticker)
-    return ticker, qtrs
+    est = _yf_rev_estimate(ticker)
+    return ticker, qtrs, est
 
+rev_est_data = dict(rev_est_cache)
 with ThreadPoolExecutor(max_workers=8) as ex:
-    for ticker, qtrs in ex.map(_fetch_one, tickers_needing_rev, timeout=300):
+    for ticker, qtrs, est in ex.map(_fetch_one, tickers_needing_rev, timeout=300):
         if qtrs:
             revenue_data[ticker] = qtrs
+        if est:
+            rev_est_data[ticker] = est
 
 # Merge revenue into history — nearest-quarter match with fallback
 # 1. Exact match  2. ±2 months (handles fiscal offset)  3. Most recent prior value (≤18 months)
@@ -397,6 +450,9 @@ os.makedirs('data', exist_ok=True)
 with open(REV_CACHE_FILE, 'w') as f:
     json.dump(revenue_data, f)
 print(f"  Revenue cache saved: {len(revenue_data)} tickers")
+with open(REV_EST_CACHE_FILE, 'w') as f:
+    json.dump(rev_est_data, f)
+print(f"  Rev estimate cache saved: {len(rev_est_data)} tickers")
 
 
 # ── 3. News ───────────────────────────────────────────────────────────────────
@@ -471,6 +527,7 @@ output = (template
     .replace('__EARNINGS_JS__', json.dumps(earnings,   ensure_ascii=False))
     .replace('__HISTORY_JS__',  json.dumps(history,    ensure_ascii=False))
     .replace('__REVENUE_JS__',  json.dumps(revenue_data, ensure_ascii=False))
+    .replace('__REV_EST_JS__', json.dumps(rev_est_data,  ensure_ascii=False))
     .replace('__NEWS_JS__',     json.dumps(news,       ensure_ascii=False))
     .replace('__META_JS__',     json.dumps(stock_meta, ensure_ascii=False))
     .replace('__BUILT_AT__',    json.dumps(built_at)))
