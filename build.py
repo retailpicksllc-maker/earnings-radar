@@ -569,10 +569,16 @@ for date_str, rows in earnings.items():
         if sym:
             tl = ('Pre-market'  if r.get('time') == 'time-pre-market'  else
                   'After hours' if r.get('time') == 'time-after-hours' else 'TBD')
+            eps_fc = r.get('epsForecast', '')
+            if not eps_fc and sym in eps_est_data:
+                est = eps_est_data[sym]
+                v = est.get('0q') or (list(est.values())[0] if est else None)
+                if v is not None:
+                    eps_fc = str(round(float(v), 2))
             stock_meta[sym] = {
                 'name': r.get('name', ''),
                 'when': tl,
-                'eps':  r.get('epsForecast', ''),
+                'eps':  eps_fc,
                 'q':    r.get('fiscalQuarterEnding', ''),
                 'date': date_str,
             }
