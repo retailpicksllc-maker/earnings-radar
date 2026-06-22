@@ -612,12 +612,22 @@ try:
     from concurrent.futures import ThreadPoolExecutor as _TPE
     def _get_price(sym):
         try:
-            fi = yf.Ticker(sym).fast_info
-            p = fi.last_price
-            prev = fi.previous_close
+            t = yf.Ticker(sym)
+            info = t.info
+            p = info.get('regularMarketPrice') or info.get('currentPrice')
+            prev = info.get('regularMarketPreviousClose') or info.get('previousClose')
             if p is None: return sym, None
             pct = round((p - prev) / prev * 100, 2) if prev else None
-            return sym, {'p': round(float(p), 2), 'pct': pct}
+            post_p = info.get('postMarketPrice')
+            pre_p  = info.get('preMarketPrice')
+            ext_p  = post_p or pre_p
+            ext_lbl = 'AH' if post_p else ('PM' if pre_p else None)
+            ext_pct = round((ext_p - p) / p * 100, 2) if ext_p and p else None
+            return sym, {
+                'p': round(float(p), 2), 'pct': pct,
+                'ext': round(float(ext_p), 2) if ext_p else None,
+                'ext_pct': ext_pct, 'ext_lbl': ext_lbl
+            }
         except: return sym, None
     with _TPE(max_workers=20) as ex:
         for sym, data in ex.map(_get_price, price_syms, timeout=60):

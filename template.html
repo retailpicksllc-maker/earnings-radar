@@ -803,9 +803,18 @@ function fetchCalendarPrices(){
     const sym=el.id.slice(3);
     const d=PRICES[sym];
     if(!d||d.p==null)return;
-    const up=d.pct==null||d.pct>=0;
-    el.innerHTML='$'+d.p.toFixed(2)+(d.pct!=null?'<br><span style="font-size:8px">'+(up?'+':'')+d.pct.toFixed(2)+'%</span>':'');
-    el.style.color=d.pct==null?'var(--faint)':up?'var(--green)':'var(--red)';
+    if(d.ext!=null){
+      // Show extended hours price
+      const up=d.ext_pct==null||d.ext_pct>=0;
+      el.innerHTML='$'+d.ext.toFixed(2)+
+        '<br><span style="font-size:8px;color:var(--faint)">'+(d.ext_lbl||'EXT')+'</span>'+
+        (d.ext_pct!=null?'<br><span style="font-size:8px">'+(up?'+':'')+d.ext_pct.toFixed(2)+'%</span>':'');
+      el.style.color=d.ext_pct==null?'var(--faint)':up?'var(--green)':'var(--red)';
+    } else {
+      const up=d.pct==null||d.pct>=0;
+      el.innerHTML='$'+d.p.toFixed(2)+(d.pct!=null?'<br><span style="font-size:8px">'+(up?'+':'')+d.pct.toFixed(2)+'%</span>':'');
+      el.style.color=d.pct==null?'var(--faint)':up?'var(--green)':'var(--red)';
+    }
   });
 }
 
