@@ -133,7 +133,7 @@ for iso, rows in past_earnings.items():
                 rev_tickers.append(sym)
 # Also include top historical tickers by mcap
 seen_rev = set(rev_tickers)
-for mc, sym in sorted(past_rows_flat, reverse=True):
+for mc, sym, _iso in sorted(past_rows_flat, reverse=True):
     if sym and sym not in seen_rev and mc > 5e9:
         seen_rev.add(sym)
         rev_tickers.append(sym)
