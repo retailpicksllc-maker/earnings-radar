@@ -301,7 +301,7 @@ function fmtWR(dates){
 function changeWeek(d){wOff+=d;renderWeek();}
 function goNow(){wOff=0;renderWeek();}
 
-function getRows(iso){return iso<=TODAY_ISO?(PAST_DATA[iso]||[]):(DATA[iso]||[]);}
+function getRows(iso){if(iso<=TODAY_ISO)return(PAST_DATA[iso]||[]).filter(r=>r.eps&&r.eps!=='');return(DATA[iso]||[]).filter(r=>(r.epsForecast&&r.epsForecast!=='')||EPS_EST[r.symbol]);}
 
 function renderWeek(){
   const dates=weekDates(wOff);
@@ -361,7 +361,7 @@ function buildFeed(weekDates){
   const items=[];
   for(let d=new Date(TODAY),limit=0;limit<60&&items.length<25;d.setDate(d.getDate()-1),limit++){
     const iso=d.toISOString().split('T')[0];
-    const rows=PAST_DATA[iso]||[];
+    const rows=(PAST_DATA[iso]||[]).filter(r=>r.eps&&r.eps!=='');
     rows.slice(0,10).forEach(r=>{
       const hArr=HISTORY[r.symbol]||[];
       const h=hArr.find(q=>{try{return new Date(q.dateReported+'T12:00').toISOString().split('T')[0]===iso;}catch{return false;}});
