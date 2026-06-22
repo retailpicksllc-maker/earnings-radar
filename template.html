@@ -662,7 +662,7 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
     return`<div class="qslide">
       <div>
         <div class="qslide-lbl">Quarter</div>
-        <div class="qslide-qtr">${esc(q.fiscalQtrEnd||'')}</div>
+        <div class="qslide-qtr">${esc(q.fiscalQtrEnd||'')}${q.fiscalQtrEnd?'<span style="font-size:11px;font-weight:800;color:var(--accent2);margin-left:6px">'+qLbl(q.fiscalQtrEnd)+'</span>':''}</div>
       </div>
       ${hasSurp?`<span class="qslide-badge ${beat?'beat':'miss'}">${beat?'Beat':'Miss'}</span>`:'<span class="qslide-badge" style="background:rgba(255,255,255,.06);color:var(--faint)">—</span>'}
       <div class="qslide-row"><span class="qslide-row-lbl">EPS</span><span class="qslide-row-val">${q.eps!=null?'$'+parseFloat(q.eps).toFixed(2):'—'}</span></div>
