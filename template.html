@@ -56,6 +56,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .logo-img-wrap img{width:100%;height:100%;object-fit:contain;position:absolute;top:0;left:0}
 .logo-fb{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}
 .logo-sym{font-size:10px;font-weight:700;color:var(--text);text-align:center;max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.logo-price{font-size:9px;font-weight:700;color:var(--faint);text-align:center}
 .no-earn{color:var(--faint);font-size:11px;text-align:center;padding:16px 0;flex:1;display:flex;align-items:center;justify-content:center}
 .more-lbl{font-size:9px;color:var(--faint);padding:4px 2px;align-self:flex-end}
 /* Right panel prices */
@@ -317,8 +318,8 @@ function fmtWR(dates){
   if(a.getMonth()===b.getMonth())return MONTHS[a.getMonth()]+' '+a.getDate()+'–'+b.getDate()+', '+b.getFullYear();
   return MONTHS[a.getMonth()]+' '+a.getDate()+' – '+MONTHS[b.getMonth()]+' '+b.getDate()+', '+b.getFullYear();
 }
-function changeWeek(d){wOff+=d;renderWeek();}
-function goNow(){wOff=0;renderWeek();}
+function changeWeek(d){wOff+=d;renderWeek();fetchCalendarPrices();}
+function goNow(){wOff=0;renderWeek();fetchCalendarPrices();}
 
 function getRows(iso){return iso<=TODAY_ISO?(PAST_DATA[iso]||[]):(DATA[iso]||[]);}
 
@@ -364,7 +365,7 @@ function makeSection(label,rows){
   show.forEach(r=>{
     const card=document.createElement('div');
     card.className='logo-card'+(selSym===r.symbol?' sel':'');
-    card.innerHTML=logoHtml(r.symbol,42)+'<span class="logo-sym">'+esc(r.symbol)+'</span>';
+    card.innerHTML=logoHtml(r.symbol,42)+'<span class="logo-sym">'+esc(r.symbol)+'</span><span class="logo-price" id="lp-'+r.symbol+'">—</span>';
     card.onclick=()=>openStock(r.symbol);
     wrap.appendChild(card);
   });
@@ -795,6 +796,27 @@ function setMkt(){
   if(txt){txt.textContent=open?'Market Open':'Market Closed';}
 }
 
+// Batch fetch live prices for all visible calendar tiles
+async function fetchCalendarPrices(){
+  const spans=document.querySelectorAll('[id^="lp-"]');
+  if(!spans.length)return;
+  const syms=[...new Set([...spans].map(el=>el.id.slice(3)))];
+  if(!syms.length)return;
+  try{
+    const r=await fetch('https://query1.finance.yahoo.com/v7/finance/quote?symbols='+syms.join(',')+'&fields=regularMarketPrice,regularMarketChangePercent',{headers:{Accept:'application/json'}});
+    const d=await r.json();
+    (d?.quoteResponse?.result||[]).forEach(q=>{
+      const el=document.getElementById('lp-'+q.symbol);
+      if(!el)return;
+      const p=q.regularMarketPrice;
+      const pct=q.regularMarketChangePercent;
+      if(p==null)return;
+      el.textContent='$'+p.toFixed(2);
+      el.style.color=pct==null?'var(--faint)':pct>=0?'var(--green)':'var(--red)';
+    });
+  }catch{}
+}
+
 // Live price for individual ticker
 async function fetchLivePrice(sym){
   const el=document.getElementById('ecPriceStrip');
@@ -839,6 +861,7 @@ async function fetchETF(sym,pId,cId){
 document.getElementById('builtLbl').textContent='Updated '+BUILT_AT;
 setMkt();
 renderWeek();
+fetchCalendarPrices();
 fetchETF('SPY','pSPY','cSPY');
 fetchETF('QQQ','pQQQ','cQQQ');
 
@@ -848,6 +871,9 @@ setInterval(()=>{
   fetchETF('SPY','pSPY','cSPY');
   fetchETF('QQQ','pQQQ','cQQQ');
 },10000);
+
+// 1b. Calendar tile prices refresh every 30s
+setInterval(fetchCalendarPrices,30000);
 
 // 2. Selected stock price refresh every 5s
 let _livePriceSym=null,_livePriceTimer=null;
