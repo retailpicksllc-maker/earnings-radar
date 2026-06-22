@@ -569,7 +569,7 @@ function openStock(sym){
   } else {
     const revAct=q0.revActual||_nearestRev(_revDict, q0.fiscalQtrEnd)||null;
     const epsAct=q0.eps!=null?parseFloat(q0.eps):null;
-    const epsEst=q0.consensusForecast!=null&&q0.consensusForecast!==''?parseFloat(q0.consensusForecast):(!q0.eps||q0.eps===''?_epsEst(q0.fiscalQtrEnd):null);
+    const _cfn0=parseFloat(q0.consensusForecast);const epsEst=q0.consensusForecast!=null&&q0.consensusForecast!==''&&!isNaN(_cfn0)?_cfn0:(!q0.eps||q0.eps===''?_epsEst(q0.fiscalQtrEnd):null);
     const epsSurp=q0.percentageSurprise!==''?parseFloat(q0.percentageSurprise):null;
     const revEstVal=_revEst(q0.fiscalQtrEnd);
     const revSurpPct=(revAct&&revEstVal)?((revAct-revEstVal)/revEstVal*100):null;
@@ -649,7 +649,7 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
     const s=parseFloat(q.percentageSurprise);
     const hasSurp=q.percentageSurprise!==''&&q.percentageSurprise!=null&&!isNaN(s);
     const beat=hasSurp&&s>0;
-    const epsCf=q.consensusForecast?parseFloat(q.consensusForecast):null;
+    const epsCf=(()=>{const n=parseFloat(q.consensusForecast);return q.consensusForecast&&!isNaN(n)?n:null;})();
     const epsEf=_epsEstDict&&_epsEstDict[q.fiscalQtrEnd]!=null?_epsEstDict[q.fiscalQtrEnd]:null;
     const epsEst=epsCf??epsEf;
     const revVal=q.revActual!=null?q.revActual:_nearestRev(_revDict,q.fiscalQtrEnd);
