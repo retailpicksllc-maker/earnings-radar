@@ -618,10 +618,10 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
       ${hasRev?`<td class="r" style="color:var(--faint)">${(()=>{const e=_revEstDict&&(_revEstDict[q.fiscalQtrEnd]||(Object.values(_revEstDict)[0]||null));return e?fmtM(e):'—';})()}</td>`:''}
     </tr>`;}).join('')}</tbody></table></div>`;
   pane.innerHTML=html;
-  setTimeout(()=>drawChart(sym,display,hasRev),60);
+  setTimeout(()=>drawChart(sym,display,hasRev,_revDict),60);
 }
 
-function drawChart(sym,data,hasRev){
+function drawChart(sym,data,hasRev,_revDict){
   const canvas=document.getElementById('ec_'+sym);
   if(!canvas)return;
   const ctx=canvas.getContext('2d');
