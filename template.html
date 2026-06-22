@@ -380,8 +380,8 @@ function buildFeed(weekDates){
     if(!isNaN(eps)){
       rows+=`<div class="fi-grid">
         <span class="fi-lbl">EPS</span>
-        <span class="fi-est">${!isNaN(est)?'$'+est.toFixed(2)+' est':''}</span>
-        <span class="fi-act">$${eps.toFixed(2)}</span>
+        <span class="fi-est">${!isNaN(est)?'$'+est.toFixed(1)+' est':''}</span>
+        <span class="fi-act">$${eps.toFixed(1)}</span>
         <span class="fi-surp ${surp>0?'up':'dn'}">${surp>0?'+':''}${surp.toFixed(1)}%</span>
       </div>`;}
     if(item.rev!=null){
@@ -545,8 +545,8 @@ function openStock(sym){
   const epsSurpStr=epsSurp!=null?(epsSurp>0?'+':'')+epsSurp.toFixed(2)+'%':'—';
   rows+=`<div class="ec-row">
     <div class="ec-metric">EPS<span style="color:var(--faint);font-size:10px">*</span></div>
-    <div class="ec-est">${epsEst!=null?'$'+epsEst.toFixed(2)+' <span style=\'color:var(--faint);font-size:10px\'>(est)</span>':'—'}</div>
-    <div class="ec-actual">${epsAct!=null?'$'+epsAct.toFixed(2):'—'}</div>
+    <div class="ec-est">${epsEst!=null?'$'+epsEst.toFixed(1)+' <span style=\'color:var(--faint);font-size:10px\'>(est)</span>':'—'}</div>
+    <div class="ec-actual">${epsAct!=null?'$'+epsAct.toFixed(1):'—'}</div>
     <div class="ec-surp" style="color:${epsColor}">${epsSurpStr}</div>
   </div>`;
   document.getElementById('ecResults').innerHTML=rows;
@@ -611,8 +611,8 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
     const s=parseFloat(q.percentageSurprise)||0;
     const cls=q.percentageSurprise!==''?(s>0?'beat':'miss'):'';
     return`<tr><td>${esc(q.fiscalQtrEnd||'')}</td>
-      <td class="r" style="font-weight:600">${q.eps!=null?'$'+parseFloat(q.eps).toFixed(2):'—'}</td>
-      <td class="r" style="color:var(--muted)">${(()=>{const cf=q.consensusForecast?parseFloat(q.consensusForecast):null;const ef=_epsEstDict&&_epsEstDict[q.fiscalQtrEnd]!=null?_epsEstDict[q.fiscalQtrEnd]:null;const v=cf??ef;return v!=null?'$'+v.toFixed(2):'—';})()}</td>
+      <td class="r" style="font-weight:600">${q.eps!=null?'$'+parseFloat(q.eps).toFixed(1):'—'}</td>
+      <td class="r" style="color:var(--muted)">${(()=>{const cf=q.consensusForecast?parseFloat(q.consensusForecast):null;const ef=_epsEstDict&&_epsEstDict[q.fiscalQtrEnd]!=null?_epsEstDict[q.fiscalQtrEnd]:null;const v=cf??ef;return v!=null?'$'+v.toFixed(1):'—';})()}</td>
       <td class="r"><span class="${cls}">${q.percentageSurprise!==''?(s>0?'+':'')+s.toFixed(1)+'%':'—'}</span></td>
       ${hasRev?`<td class="r" style="color:var(--blue)">${fmtM(q.revActual!=null?q.revActual:_nearestRev(_revDict,q.fiscalQtrEnd))}</td>`:''}
       ${hasRev?`<td class="r" style="color:var(--faint)">${(()=>{const e=_revEstDict&&(_revEstDict[q.fiscalQtrEnd]||(Object.values(_revEstDict)[0]||null));return e?fmtM(e):'—';})()}</td>`:''}
