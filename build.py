@@ -610,64 +610,59 @@ print(f"  Fetching prices for {len(price_syms)} tickers…")
 try:
     import yfinance as yf
     from concurrent.futures import ThreadPoolExecutor as _TPE
-    # Single HTTP request to Yahoo Finance spark API — fast, includes pre/post market
-    import urllib.request as _ur, time as _time
-    _BATCH = 200
-    for _i in range(0, len(price_syms), _BATCH):
-        _batch = price_syms[_i:_i+_BATCH]
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+
+    # Phase 1: fast_info for all tickers (handles Yahoo crumb internally)
+    def _get_price_fast(sym):
         try:
-            _url = ('https://query1.finance.yahoo.com/v7/finance/spark?symbols='
-                    + ','.join(_batch) + '&range=1d&interval=1m&includePrePost=true')
-            _req = urllib.request.Request(_url, headers={'User-Agent':'Mozilla/5.0','Accept':'application/json'})
-            with _ur.urlopen(_req, timeout=30) as _r:
-                _data = json.loads(_r.read())
-            # Parse response
-            for _item in (_data.get('spark',{}).get('result') or []):
-                try:
-                    _sym = _item.get('symbol','')
-                    _resp = (_item.get('response') or [{}])[0]
-                    _meta = _resp.get('meta',{})
-                    _ts   = _resp.get('timestamp',[])
-                    _closes = (_resp.get('indicators',{}).get('quote',[{}]) or [{}])[0].get('close',[])
-                    if not _ts or not _closes: continue
-                    # Align ts and closes
-                    _pairs = [(t,c) for t,c in zip(_ts,_closes) if c is not None]
-                    if not _pairs: continue
-                    import datetime as _dt
-                    _ET = _dt.timezone((_dt.timedelta(hours=-4)))  # EDT
-                    _now_et = _dt.datetime.now(_ET)
-                    _today = _now_et.date()
-                    _reg_open  = _dt.datetime(_today.year,_today.month,_today.day,9,30,tzinfo=_ET).timestamp()
-                    _reg_close = _dt.datetime(_today.year,_today.month,_today.day,16,0, tzinfo=_ET).timestamp()
-                    # Regular close price
-                    _reg = [(t,c) for t,c in _pairs if _reg_open <= t <= _reg_close]
-                    _base_p = _reg[-1][1] if _reg else _pairs[-1][1]
-                    # Previous close from meta
-                    _prev_p = _meta.get('chartPreviousClose') or _meta.get('previousClose')
-                    _pct = round((_base_p - _prev_p) / _prev_p * 100, 2) if _prev_p else None
-                    # Extended hours: any bars after reg close
-                    _ext_pairs = [(t,c) for t,c in _pairs if t > _reg_close]
-                    _ext_p = _ext_pairs[-1][1] if _ext_pairs else None
-                    # Also check pre-market (before reg open)
-                    if not _ext_p:
-                        _pre_pairs = [(t,c) for t,c in _pairs if t < _reg_open]
-                        if _pre_pairs:
-                            _ext_p = _pre_pairs[-1][1]
-                            _ext_lbl = 'PM'
-                        else:
-                            _ext_lbl = None
-                    else:
-                        _ext_lbl = 'AH'
-                    _ext_pct = round((_ext_p - _base_p) / _base_p * 100, 2) if _ext_p and _base_p else None
-                    prices[_sym] = {
-                        'p': round(float(_base_p), 2), 'pct': _pct,
-                        'ext': round(float(_ext_p), 2) if _ext_p else None,
-                        'ext_pct': _ext_pct, 'ext_lbl': _ext_lbl
-                    }
-                except: continue
-        except Exception as _e:
-            print(f"  Spark batch {_i//200+1} failed: {_e}")
-    print(f"  Got prices for {len(prices)} tickers (spark API)")
+            fi = yf.Ticker(sym).fast_info
+            p  = fi.last_price
+            prev = fi.previous_close
+            if p is None: return sym, None
+            pct = round((p - prev) / prev * 100, 2) if prev else None
+            return sym, {'p': round(float(p), 2), 'pct': pct, 'ext': None, 'ext_pct': None, 'ext_lbl': None}
+        except: return sym, None
+
+    with _TPE(max_workers=20) as ex:
+        for sym, data in ex.map(_get_price_fast, price_syms, timeout=60):
+            if data: prices[sym] = data
+    print(f"  Got prices for {len(prices)} tickers (fast_info)")
+
+    # Phase 2: after-hours price for upcoming tickers via 5m history with prepost
+    upcoming_syms = list({r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')})
+    if upcoming_syms:
+        def _get_ext(sym):
+            try:
+                h = yf.Ticker(sym).history(period='1d', interval='5m', prepost=True)
+                if h.empty: return sym, None, None, None
+                import datetime as _dt
+                _ET = _dt.timezone(_dt.timedelta(hours=-4))
+                h.index = h.index.tz_convert(_ET)
+                _today = _dt.datetime.now(_ET).date()
+                h = h[h.index.date == _today]
+                reg_close_t = h.index.to_series().apply(lambda t: t.hour < 16 or (t.hour == 16 and t.minute == 0))
+                ext_rows = h[~reg_close_t & (h.index.hour >= 16)]
+                pre_rows  = h[h.index.hour < 9 or ((h.index.hour == 9) & (h.index.minute < 30))]
+                if not ext_rows.empty:
+                    ext_p = float(ext_rows['Close'].iloc[-1])
+                    lbl = 'AH'
+                elif not pre_rows.empty:
+                    ext_p = float(pre_rows['Close'].iloc[-1])
+                    lbl = 'PM'
+                else:
+                    return sym, None, None, None
+                base_p = prices.get(sym, {}).get('p')
+                ext_pct = round((ext_p - base_p) / base_p * 100, 2) if ext_p and base_p else None
+                return sym, round(ext_p, 2), ext_pct, lbl
+            except: return sym, None, None, None
+
+        with _TPE(max_workers=10) as ex:
+            for sym, ext_p, ext_pct, lbl in ex.map(_get_ext, upcoming_syms, timeout=45):
+                if ext_p is not None and sym in prices:
+                    prices[sym]['ext'] = ext_p
+                    prices[sym]['ext_pct'] = ext_pct
+                    prices[sym]['ext_lbl'] = lbl
+        print(f"  Extended hours checked for {len(upcoming_syms)} upcoming tickers")
 except Exception as e:
     print(f"  Price fetch failed: {e}")
 
