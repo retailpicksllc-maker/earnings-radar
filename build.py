@@ -215,8 +215,10 @@ import yfinance as yf
 
 REV_CACHE_FILE = 'data/revenue_cache.json'
 REV_EST_CACHE_FILE = 'data/rev_est_cache.json'
+EPS_EST_CACHE_FILE = 'data/eps_est_cache.json'
 revenue_cache = {}
 rev_est_cache = {}
+eps_est_cache = {}
 if os.path.exists(REV_CACHE_FILE):
     try:
         with open(REV_CACHE_FILE) as f:
@@ -229,6 +231,13 @@ if os.path.exists(REV_EST_CACHE_FILE):
         with open(REV_EST_CACHE_FILE) as f:
             rev_est_cache = json.load(f)
         print(f"  Loaded rev estimate cache: {len(rev_est_cache)} tickers")
+    except:
+        pass
+if os.path.exists(EPS_EST_CACHE_FILE):
+    try:
+        with open(EPS_EST_CACHE_FILE) as f:
+            eps_est_cache = json.load(f)
+        print(f"  Loaded EPS estimate cache: {len(eps_est_cache)} tickers")
     except:
         pass
 
@@ -398,6 +407,41 @@ def _yf_rev_estimate(ticker):
         return result
     except: return {}
 
+
+def _yf_eps_estimate(ticker):
+    """Fetch quarterly EPS estimate via yfinance. Returns {'Mon YYYY': $} or {'0q': $}."""
+    try:
+        t = yf.Ticker(ticker)
+        ee_df = t.earnings_estimate
+        if ee_df is None or ee_df.empty: return {}
+        result = {}
+        try:
+            ed = t.earnings_dates
+            if ed is not None and not ed.empty:
+                from datetime import timezone
+                now_tz = datetime.now(timezone.utc)
+                upcoming = ed[ed.index > now_tz].sort_index()
+                if not upcoming.empty:
+                    for period, idx_key in [('0q', 0), ('+1q', 1)]:
+                        if period in ee_df.index and 'avg' in ee_df.columns and idx_key < len(upcoming):
+                            val = ee_df.loc[period, 'avg']
+                            if val and not (isinstance(val, float) and (val != val)):
+                                val_f = round(float(val), 4)
+                                if -1000 < val_f < 10000:
+                                    qkey = upcoming.index[idx_key].strftime('%b %Y')
+                                    result[qkey] = val_f
+        except: pass
+        if not result:
+            for idx_key in ['0q', '+1q']:
+                if idx_key in ee_df.index and 'avg' in ee_df.columns:
+                    val = ee_df.loc[idx_key, 'avg']
+                    if val and not (isinstance(val, float) and (val != val)):
+                        val_f = round(float(val), 4)
+                        if -1000 < val_f < 10000:
+                            result[idx_key] = val_f
+        return result
+    except: return {}
+
 def _fetch_one(ticker):
     qtrs = _yf_revenue(ticker)
     if not qtrs:
@@ -418,6 +462,16 @@ with ThreadPoolExecutor(max_workers=8) as ex:
         if est:
             rev_est_data[ticker] = est
 print(f"  Revenue estimates collected: {len(rev_est_data)} tickers")
+
+# Fetch EPS estimates for ALL rev_tickers not yet cached
+eps_est_data = dict(eps_est_cache)
+eps_est_fetch = [t for t in rev_tickers if t not in eps_est_data]
+print(f"Fetching EPS estimates for {len(eps_est_fetch)} tickers...")
+with ThreadPoolExecutor(max_workers=8) as ex:
+    for ticker, est in ex.map(lambda t: (t, _yf_eps_estimate(t)), eps_est_fetch, timeout=300):
+        if est:
+            eps_est_data[ticker] = est
+print(f"  EPS estimates collected: {len(eps_est_data)} tickers")
 
 # Merge revenue into history — nearest-quarter match with fallback
 # 1. Exact match  2. ±2 months (handles fiscal offset)  3. Most recent prior value (≤18 months)
@@ -457,6 +511,9 @@ print(f"  Revenue cache saved: {len(revenue_data)} tickers")
 with open(REV_EST_CACHE_FILE, 'w') as f:
     json.dump(rev_est_data, f)
 print(f"  Rev estimate cache saved: {len(rev_est_data)} tickers")
+with open(EPS_EST_CACHE_FILE, 'w') as f:
+    json.dump(eps_est_data, f)
+print(f"  EPS estimate cache saved: {len(eps_est_data)} tickers")
 
 
 # ── 3. News ───────────────────────────────────────────────────────────────────
@@ -532,6 +589,7 @@ output = (template
     .replace('__HISTORY_JS__',  json.dumps(history,    ensure_ascii=False))
     .replace('__REVENUE_JS__',  json.dumps(revenue_data, ensure_ascii=False))
     .replace('__REV_EST_JS__', json.dumps(rev_est_data,  ensure_ascii=False))
+    .replace('__EPS_EST_JS__', json.dumps(eps_est_data,  ensure_ascii=False))
     .replace('__NEWS_JS__',     json.dumps(news,       ensure_ascii=False))
     .replace('__META_JS__',     json.dumps(stock_meta, ensure_ascii=False))
     .replace('__BUILT_AT__',    json.dumps(built_at)))

@@ -254,6 +254,7 @@ const PAST_DATA=__PAST_EARNINGS_JS__;
 const HISTORY=__HISTORY_JS__;
 const REVENUE=__REVENUE_JS__;
 const REV_EST=__REV_EST_JS__;
+const EPS_EST=__EPS_EST_JS__;
 const NEWS=__NEWS_JS__;
 const META=__META_JS__;
 const BUILT_AT=__BUILT_AT__;
@@ -509,18 +510,24 @@ function openStock(sym){
   // Populate REV/EPS card
   const _revDict=REVENUE[sym]||null;
   const _revEstDict=REV_EST[sym]||null;
+  const _epsEstDict=EPS_EST[sym]||null;
   // Find rev estimate for a given fiscalQtrEnd
   function _revEst(fqe){
     if(!_revEstDict||!fqe)return null;
-    // exact match
     if(_revEstDict[fqe]!=null)return _revEstDict[fqe];
-    // generic keys like '0q' — pick best available
     const vals=Object.values(_revEstDict);
+    return vals.length?vals[0]:null;
+  }
+  // Find EPS estimate — exact match on quarter key, then first available value
+  function _epsEst(fqe){
+    if(!_epsEstDict)return null;
+    if(fqe&&_epsEstDict[fqe]!=null)return _epsEstDict[fqe];
+    const vals=Object.values(_epsEstDict);
     return vals.length?vals[0]:null;
   }
   const revAct=q0.revActual||_nearestRev(_revDict, q0.fiscalQtrEnd)||null;
   const epsAct=q0.eps!=null?parseFloat(q0.eps):null;
-  const epsEst=q0.consensusForecast!=null?parseFloat(q0.consensusForecast):null;
+  const epsEst=q0.consensusForecast!=null&&q0.consensusForecast!==''?parseFloat(q0.consensusForecast):_epsEst(q0.fiscalQtrEnd);
   const epsSurp=q0.percentageSurprise!==''?parseFloat(q0.percentageSurprise):null;
   const revSurp=null; // no rev estimate available
 
@@ -567,12 +574,12 @@ function openStock(sym){
     <div class="met"><div class="met-lbl">EPS Est</div><div class="met-val">${m.eps?'$'+m.eps:'—'}</div></div>`;
 
   switchTab(0,document.querySelector('.sd-tab'));
-  buildEarnings(sym,hist,m,_revDict,_revEstDict);
+  buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict);
   buildNews(sym);
   fetchLivePrice(sym);
 }
 
-function buildEarnings(sym,hist,m,_revDict,_revEstDict){
+function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
   const pane=document.getElementById('paneEarnings');
   let html='';
   if(m.date||m.eps){
@@ -607,7 +614,7 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict){
     const cls=q.percentageSurprise!==''?(s>0?'beat':'miss'):'';
     return`<tr><td>${esc(q.fiscalQtrEnd||'')}</td>
       <td class="r" style="font-weight:600">${q.eps!=null?'$'+parseFloat(q.eps).toFixed(2):'—'}</td>
-      <td class="r" style="color:var(--muted)">${q.consensusForecast?'$'+parseFloat(q.consensusForecast).toFixed(2):'—'}</td>
+      <td class="r" style="color:var(--muted)">${(()=>{const cf=q.consensusForecast?parseFloat(q.consensusForecast):null;const ef=_epsEstDict&&_epsEstDict[q.fiscalQtrEnd]!=null?_epsEstDict[q.fiscalQtrEnd]:null;const v=cf??ef;return v!=null?'$'+v.toFixed(2):'—';})()}</td>
       <td class="r"><span class="${cls}">${q.percentageSurprise!==''?(s>0?'+':'')+s.toFixed(1)+'%':'—'}</span></td>
       ${hasRev?`<td class="r" style="color:var(--blue)">${fmtM(q.revActual!=null?q.revActual:_nearestRev(_revDict,q.fiscalQtrEnd))}</td>`:''}
       ${hasRev?`<td class="r" style="color:var(--faint)">${(()=>{const e=_revEstDict&&(_revEstDict[q.fiscalQtrEnd]||(Object.values(_revEstDict)[0]||null));return e?fmtM(e):'—';})()}</td>`:''}
