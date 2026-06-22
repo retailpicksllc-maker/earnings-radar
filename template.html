@@ -277,6 +277,7 @@ const REV_EST=__REV_EST_JS__;
 const EPS_EST=__EPS_EST_JS__;
 const NEWS=__NEWS_JS__;
 const META=__META_JS__;
+const PRICES=__PRICES_JS__;
 const BUILT_AT=__BUILT_AT__;
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -796,32 +797,19 @@ function setMkt(){
   if(txt){txt.textContent=open?'Market Open':'Market Closed';}
 }
 
-// Batch fetch live prices for all visible calendar tiles
-const _PROXY='https://corsproxy.io/?';
-function _yf(sym){return _PROXY+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=1d');}
-async function fetchCalendarPrices(){
-  const spans=document.querySelectorAll('[id^="lp-"]');
-  if(!spans.length)return;
-  const syms=[...new Set([...spans].map(el=>el.id.slice(3)))];
-  if(!syms.length)return;
-  const results=await Promise.allSettled(syms.map(s=>fetch(_yf(s)).then(r=>r.json()).then(d=>{
-    const meta=d?.chart?.result?.[0]?.meta;
-    const p=meta?.regularMarketPrice;
-    const prev=meta?.chartPreviousClose||meta?.previousClose;
-    const pct=p&&prev?(p-prev)/prev*100:null;
-    return{s,p,pct};
-  })));
-  results.forEach(res=>{
-    if(res.status!=='fulfilled')return;
-    const{s,p,pct}=res.value;
-    const el=document.getElementById('lp-'+s);
-    if(!el||p==null)return;
-    const up=pct==null||pct>=0;
-    el.innerHTML='$'+p.toFixed(2)+(pct!=null?'<br><span style="font-size:8px">'+(up?'+':'')+pct.toFixed(2)+'%</span>':'');
-    el.style.color=pct==null?'var(--faint)':up?'var(--green)':'var(--red)';
+// Populate calendar tile prices from build-time PRICES data
+function fetchCalendarPrices(){
+  document.querySelectorAll('[id^="lp-"]').forEach(el=>{
+    const sym=el.id.slice(3);
+    const d=PRICES[sym];
+    if(!d||d.p==null)return;
+    const up=d.pct==null||d.pct>=0;
+    el.innerHTML='$'+d.p.toFixed(2)+(d.pct!=null?'<br><span style="font-size:8px">'+(up?'+':'')+d.pct.toFixed(2)+'%</span>':'');
+    el.style.color=d.pct==null?'var(--faint)':up?'var(--green)':'var(--red)';
   });
 }
 
+const _PROXY='https://corsproxy.io/?';
 // Live price for individual ticker
 async function fetchLivePrice(sym){
   const el=document.getElementById('ecPriceStrip');
@@ -886,9 +874,6 @@ setInterval(()=>{
   fetchETF('SPY','pSPY','cSPY');
   fetchETF('QQQ','pQQQ','cQQQ');
 },10000);
-
-// 1b. Calendar tile prices refresh every 30s
-setInterval(fetchCalendarPrices,30000);
 
 // 2. Selected stock price refresh every 5s
 let _livePriceSym=null,_livePriceTimer=null;

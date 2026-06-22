@@ -599,6 +599,33 @@ for date_str, rows in earnings.items():
                 'date': date_str,
             }
 
+
+# ── 4b. Fetch prices for all calendar tickers ────────────────────────────────
+price_syms = list({r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')}
+                | {r.get('symbol','') for rows in past_earnings.items() for r in (rows[1] if isinstance(rows,tuple) else rows) if r.get('symbol')}
+                | {'SPY','QQQ'})
+price_syms = [s for s in price_syms if s]
+prices = {}
+print(f"  Fetching prices for {len(price_syms)} tickers…")
+try:
+    import yfinance as yf
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    def _get_price(sym):
+        try:
+            fi = yf.Ticker(sym).fast_info
+            p = fi.last_price
+            prev = fi.previous_close
+            if p is None: return sym, None
+            pct = round((p - prev) / prev * 100, 2) if prev else None
+            return sym, {'p': round(float(p), 2), 'pct': pct}
+        except: return sym, None
+    with _TPE(max_workers=20) as ex:
+        for sym, data in ex.map(_get_price, price_syms, timeout=60):
+            if data: prices[sym] = data
+    print(f"  Got prices for {len(prices)} tickers")
+except Exception as e:
+    print(f"  Price fetch failed: {e}")
+
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
 
@@ -614,6 +641,7 @@ output = (template
     .replace('__EPS_EST_JS__', json.dumps(eps_est_data,  ensure_ascii=False))
     .replace('__NEWS_JS__',     json.dumps(news,       ensure_ascii=False))
     .replace('__META_JS__',     json.dumps(stock_meta, ensure_ascii=False))
+    .replace('__PRICES_JS__',   json.dumps(prices,      ensure_ascii=False))
     .replace('__BUILT_AT__',    json.dumps(built_at)))
 
 with open('docs/index.html', 'w') as f:
