@@ -612,15 +612,32 @@ try:
     from concurrent.futures import ThreadPoolExecutor as _TPE
     from concurrent.futures import ThreadPoolExecutor as _TPE
 
-    # Phase 1: fast_info for all tickers (handles Yahoo crumb internally)
+    # fast_info for all tickers — uses quoteSummary (no crumb), includes post/pre market
     def _get_price_fast(sym):
         try:
             fi = yf.Ticker(sym).fast_info
-            p  = fi.last_price
+            p    = fi.last_price
             prev = fi.previous_close
             if p is None: return sym, None
-            pct = round((p - prev) / prev * 100, 2) if prev else None
-            return sym, {'p': round(float(p), 2), 'pct': pct, 'ext': None, 'ext_pct': None, 'ext_lbl': None}
+            pct  = round((p - prev) / prev * 100, 2) if prev else None
+            ext_p = None; ext_lbl = None
+            try:
+                pp = fi.post_market_price
+                if pp and abs(float(pp) - float(p)) > 0.001:
+                    ext_p = float(pp); ext_lbl = 'AH'
+            except: pass
+            if ext_p is None:
+                try:
+                    prp = fi.pre_market_price
+                    if prp and abs(float(prp) - float(p)) > 0.001:
+                        ext_p = float(prp); ext_lbl = 'PM'
+                except: pass
+            ext_pct = round((ext_p - p) / p * 100, 2) if ext_p and p else None
+            return sym, {
+                'p': round(float(p), 2), 'pct': pct,
+                'ext': round(ext_p, 2) if ext_p else None,
+                'ext_pct': ext_pct, 'ext_lbl': ext_lbl
+            }
         except: return sym, None
 
     with _TPE(max_workers=20) as ex:
@@ -628,41 +645,6 @@ try:
             if data: prices[sym] = data
     print(f"  Got prices for {len(prices)} tickers (fast_info)")
 
-    # Phase 2: after-hours price for upcoming tickers via 5m history with prepost
-    upcoming_syms = list({r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')})
-    if upcoming_syms:
-        def _get_ext(sym):
-            try:
-                h = yf.Ticker(sym).history(period='1d', interval='5m', prepost=True)
-                if h.empty: return sym, None, None, None
-                import datetime as _dt
-                _ET = _dt.timezone(_dt.timedelta(hours=-4))
-                h.index = h.index.tz_convert(_ET)
-                _today = _dt.datetime.now(_ET).date()
-                h = h[h.index.date == _today]
-                reg_close_t = h.index.to_series().apply(lambda t: t.hour < 16 or (t.hour == 16 and t.minute == 0))
-                ext_rows = h[~reg_close_t & (h.index.hour >= 16)]
-                pre_rows  = h[h.index.hour < 9 or ((h.index.hour == 9) & (h.index.minute < 30))]
-                if not ext_rows.empty:
-                    ext_p = float(ext_rows['Close'].iloc[-1])
-                    lbl = 'AH'
-                elif not pre_rows.empty:
-                    ext_p = float(pre_rows['Close'].iloc[-1])
-                    lbl = 'PM'
-                else:
-                    return sym, None, None, None
-                base_p = prices.get(sym, {}).get('p')
-                ext_pct = round((ext_p - base_p) / base_p * 100, 2) if ext_p and base_p else None
-                return sym, round(ext_p, 2), ext_pct, lbl
-            except: return sym, None, None, None
-
-        with _TPE(max_workers=10) as ex:
-            for sym, ext_p, ext_pct, lbl in ex.map(_get_ext, upcoming_syms, timeout=45):
-                if ext_p is not None and sym in prices:
-                    prices[sym]['ext'] = ext_p
-                    prices[sym]['ext_pct'] = ext_pct
-                    prices[sym]['ext_lbl'] = lbl
-        print(f"  Extended hours checked for {len(upcoming_syms)} upcoming tickers")
 except Exception as e:
     print(f"  Price fetch failed: {e}")
 

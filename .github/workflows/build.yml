@@ -43,4 +43,4 @@ jobs:
         run: |
           git add docs/index.html data/history_cache.json data/past_calendar_cache.json data/revenue_cache.json data/rev_est_cache.json data/eps_est_cache.json
           git diff --staged --quiet || git commit -m "Auto-update: $(date -u '+%Y-%m-%d %H:%M UTC')"
-          git push
+          git push || (git pull --rebase origin main && git push)
