@@ -871,8 +871,9 @@ async function buildPriceChart(sym){
           x:{ticks:{color:'rgba(255,255,255,0.4)',maxTicksLimit:6,maxRotation:0,font:{size:10}},grid:{color:'rgba(255,255,255,0.05)'},border:{display:false}},
           y:{ticks:{color:'rgba(255,255,255,0.4)',callback:v=>'$'+v.toFixed(0),font:{size:10}},grid:{color:'rgba(255,255,255,0.05)'},border:{display:false},position:'right'}
         }
-      }
-    },[crosshairPlugin]);
+      },
+      plugins:[crosshairPlugin]
+    });
   }catch(e){pane.innerHTML='<div style="padding:20px;color:var(--faint);text-align:center;font-size:12px">Chart unavailable</div>';}
   _chartLoading='';
 }
