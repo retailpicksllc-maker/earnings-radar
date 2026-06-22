@@ -630,7 +630,7 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
   // Upcoming slide
   let upcomingSlide='';
   if(m.date||m.eps){
-    const epsEst=m.eps?'$'+parseFloat(m.eps).toFixed(2):null;
+    const epsEst=(s=>{if(!s)return null;const neg=s.includes('(');const v=parseFloat(s.replace(/[^0-9.]/g,''));if(isNaN(v))return null;return'$'+(neg?-v:v).toFixed(2);})(m.eps);
     const revEst=_revEstDict?fmtM(Object.values(_revEstDict)[0]||null):null;
     upcomingSlide=`<div class="qslide upcoming">
       <div>
