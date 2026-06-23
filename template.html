@@ -200,6 +200,10 @@ table.ht{width:100%;border-collapse:collapse;font-size:11px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
 </style>
+<script>
+// v10f3895 — force reload if browser has older cached version
+(function(){var v='10f3895';if(sessionStorage.getItem('ecv')!==v){sessionStorage.setItem('ecv',v);if(performance.navigation&&performance.navigation.type!==1){location.reload(true);}}})();
+</script>
 </head>
 <body>
 <nav class="navbar">
