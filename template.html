@@ -1095,11 +1095,12 @@ async function fetchLivePrice(sym){
   const yq=yhM[sym];
   const state=yq?.marketState;
   let extLine='';
-  if((state==='POST'||state==='CLOSED')&&yq?.postMarketPrice){
+  const reg=yq?.regularMarketPrice;
+  if(yq?.postMarketPrice&&reg&&Math.abs(yq.postMarketPrice-reg)>0.001){
     const ep=yq.postMarketPrice,epct=yq.postMarketChangePercent;
     const eu=epct>=0;
     extLine=`<span class="ec-price-chg ${eu?'up':'dn'}" style="font-size:11px;margin-left:8px">🌙 AH $${ep.toFixed(2)} ${eu?'+':''}${epct!=null?epct.toFixed(2)+'%':''}</span>`;
-  }else if(state==='PRE'&&yq?.preMarketPrice){
+  }else if(yq?.preMarketPrice&&reg&&Math.abs(yq.preMarketPrice-reg)>0.001){
     const ep=yq.preMarketPrice,epct=yq.preMarketChangePercent;
     const eu=epct>=0;
     extLine=`<span class="ec-price-chg ${eu?'up':'dn'}" style="font-size:11px;margin-left:8px">PM $${ep.toFixed(2)} ${eu?'+':''}${epct!=null?epct.toFixed(2)+'%':''}</span>`;
@@ -1136,11 +1137,14 @@ async function _yhBatchQuote(syms){
 
 // Build extended hours HTML from a Yahoo quote object
 function _extHtml(yq){
-  const state=yq?.marketState;
+  if(!yq)return'';
+  const state=yq.marketState;
+  const reg=yq.regularMarketPrice;
   let ep=null,epct=null,lbl=null,moon=false;
-  if((state==='POST'||state==='CLOSED')&&yq?.postMarketPrice){
+  // Show post-market whenever postMarketPrice exists & differs from close (state-agnostic)
+  if(yq.postMarketPrice&&reg&&Math.abs(yq.postMarketPrice-reg)>0.001){
     ep=yq.postMarketPrice;epct=yq.postMarketChangePercent;lbl='AH';moon=true;
-  }else if(state==='PRE'&&yq?.preMarketPrice){
+  }else if(yq.preMarketPrice&&reg&&Math.abs(yq.preMarketPrice-reg)>0.001){
     ep=yq.preMarketPrice;epct=yq.preMarketChangePercent;lbl='PM';
   }
   if(ep==null)return'';
