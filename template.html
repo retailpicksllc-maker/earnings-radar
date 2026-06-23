@@ -351,7 +351,7 @@ function fmtWR(dates){
 function changeWeek(d){wOff+=d;renderWeek();fetchCalendarPrices();}
 function goNow(){wOff=0;renderWeek();fetchCalendarPrices();}
 
-function getRows(iso){return iso<=TODAY_ISO?(PAST_DATA[iso]||[]):(DATA[iso]||[]);}
+function getRows(iso){return iso<TODAY_ISO?(PAST_DATA[iso]||[]):(DATA[iso]||[]);}
 
 function renderWeek(){
   const dates=weekDates(wOff);
