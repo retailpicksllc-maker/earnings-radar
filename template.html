@@ -1065,16 +1065,33 @@ async function _fmpQuote(symbols){
   }catch{return{};}
 }
 
-// Live price strip for selected ticker
+// Live price strip for selected ticker (FMP primary, Yahoo fallback)
 async function fetchLivePrice(sym){
   const el=document.getElementById('ecPriceStrip');
   if(!el)return;
   el.className='ec-price-loading';el.textContent='Loading price…';
   const[fmpM,yhM]=await Promise.all([_fmpQuote(sym),_yhBatchQuote([sym])]);
-  const q=fmpM[sym];
-  if(!q||q.price==null){el.textContent='';return;}
-  const price=q.price,chg=q.change,pct=q.changesPercentage;
-  const up=chg>=0;
+  let price=null,chg=null,pct=null;
+  const fq=fmpM[sym];
+  if(fq&&fq.price!=null){
+    price=fq.price;chg=fq.change;pct=fq.changesPercentage;
+  }else{
+    // FMP has no data — fall back to Yahoo Finance chart API
+    try{
+      const r=await fetch(_PROXY+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=1d'));
+      const d=await r.json();
+      const meta=d?.chart?.result?.[0]?.meta;
+      if(meta){
+        price=meta.regularMarketPrice||meta.previousClose;
+        const prev=meta.previousClose||meta.chartPreviousClose;
+        chg=price&&prev?price-prev:null;
+        pct=chg&&prev?(chg/prev*100):null;
+      }
+    }catch{}
+  }
+  if(price==null){el.textContent='';return;}
+  const up=chg==null||chg>=0;
+  // Extended hours from Yahoo
   const yq=yhM[sym];
   const state=yq?.marketState;
   let extLine='';
@@ -1089,7 +1106,7 @@ async function fetchLivePrice(sym){
   }
   el.className='ec-price-strip';
   el.innerHTML=`<span class="ec-price-val">$${price.toFixed(2)}</span>`+
-    (pct!=null?`<span class="ec-price-chg ${up?'up':'dn'}">${up?'+':''}${chg.toFixed(2)} (${up?'+':''}${pct.toFixed(2)}%)</span>`:'')+extLine;
+    (pct!=null?`<span class="ec-price-chg ${up?'up':'dn'}">${up?'+':''}${(chg||0).toFixed(2)} (${up?'+':''}${pct.toFixed(2)}%)</span>`:'')+extLine;
 }
 
 // Header index prices (SPY, QQQ, BTC)
@@ -1137,9 +1154,10 @@ async function fetchLiveCalendarPrices(){
   const syms=[...new Set(els.map(e=>e.id.slice(3)))];
   const[fmpM,yhM]=await Promise.all([_fmpQuote(syms.join(',')),_yhBatchQuote(syms)]);
   els.forEach(el=>{
-    const sym=el.id.slice(3),q=fmpM[sym];
-    if(!q||q.price==null)return;
-    const price=q.price,chg=q.change,pct=q.changesPercentage;
+    const sym=el.id.slice(3);
+    const fq=fmpM[sym];
+    if(!fq||fq.price==null)return; // FMP miss — keep static build price shown
+    const price=fq.price,chg=fq.change,pct=fq.changesPercentage;
     const up=chg>=0;
     const closeLine='$'+price.toFixed(2)+(pct!=null?' <span style="font-size:8px;color:'+(up?'var(--green)':'var(--red)')+'">'+(up?'+':'')+pct.toFixed(2)+'%</span>':'');
     const ext=_extHtml(yhM[sym]);

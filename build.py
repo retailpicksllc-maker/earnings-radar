@@ -506,8 +506,11 @@ with ThreadPoolExecutor(max_workers=8) as ex:
         if qtrs:
             revenue_data[ticker] = qtrs
 
-# Fetch revenue estimates for ALL rev_tickers not yet cached
-est_tickers = [t for t in rev_tickers if t not in rev_est_data]
+# Upcoming tickers need fresh estimate attempts even if previously cached empty
+upcoming_syms = set(r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol'))
+
+# Fetch revenue estimates — always retry upcoming tickers with empty cache
+est_tickers = [t for t in rev_tickers if t not in rev_est_data or (t in upcoming_syms and not rev_est_data.get(t))]
 print(f"Fetching revenue estimates for {len(est_tickers)} tickers...")
 with ThreadPoolExecutor(max_workers=8) as ex:
     for ticker, est in ex.map(lambda t: (t, _yf_rev_estimate(t)), est_tickers, timeout=300):
@@ -515,9 +518,9 @@ with ThreadPoolExecutor(max_workers=8) as ex:
             rev_est_data[ticker] = est
 print(f"  Revenue estimates collected: {len(rev_est_data)} tickers")
 
-# Fetch EPS estimates for ALL rev_tickers not yet cached
+# Fetch EPS estimates — always retry upcoming tickers with empty cache
 eps_est_data = dict(eps_est_cache)
-eps_est_fetch = [t for t in rev_tickers if t not in eps_est_data]
+eps_est_fetch = [t for t in rev_tickers if t not in eps_est_data or (t in upcoming_syms and not eps_est_data.get(t))]
 print(f"Fetching EPS estimates for {len(eps_est_fetch)} tickers...")
 with ThreadPoolExecutor(max_workers=8) as ex:
     for ticker, est in ex.map(lambda t: (t, _yf_eps_estimate(t)), eps_est_fetch, timeout=300):
