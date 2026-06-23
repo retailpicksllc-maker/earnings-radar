@@ -1051,46 +1051,62 @@ function fetchCalendarPrices(){
   });
 }
 
-const _PROXY='https://corsproxy.io/?';
-// Live price for individual ticker
+const FMP_KEY='yEYTL2v0FPQRUMAXSwe93gzPl4MBNnDi';
+
+// ── FMP batch quote ──────────────────────────────────────────────────────────
+async function _fmpQuote(symbols){
+  try{
+    const r=await fetch('https://financialmodelingprep.com/stable/quote?symbol='+symbols+'&apikey='+FMP_KEY);
+    const d=await r.json();
+    if(!Array.isArray(d))return{};
+    const m={};d.forEach(q=>{if(q.symbol)m[q.symbol]=q;});
+    return m;
+  }catch{return{};}
+}
+
+// Live price strip for selected ticker
 async function fetchLivePrice(sym){
   const el=document.getElementById('ecPriceStrip');
   if(!el)return;
-  el.className='ec-price-loading';
-  el.textContent='Loading price…';
-  try{
-    const r=await fetch(_PROXY+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=1d'));
-    const d=await r.json();
-    const meta=d?.chart?.result?.[0]?.meta;
-    if(!meta){el.textContent='';return;}
-    const price=meta.regularMarketPrice||meta.previousClose;
-    const prev=meta.previousClose||meta.chartPreviousClose;
-    const chg=price&&prev?price-prev:null;
-    const pct=chg&&prev?(chg/prev*100):null;
-    const up=chg!=null&&chg>=0;
-    el.className='ec-price-strip';
-    el.innerHTML=`<span class="ec-price-val">$${price!=null?price.toFixed(2):'—'}</span>`+
-      (pct!=null?`<span class="ec-price-chg ${up?'up':'dn'}">${up?'+':''}${chg.toFixed(2)} (${up?'+':''}${pct.toFixed(2)}%)</span>`:'');
-  }catch{el.textContent='';}
+  el.className='ec-price-loading';el.textContent='Loading price…';
+  const m=await _fmpQuote(sym);
+  const q=m[sym];
+  if(!q||q.price==null){el.textContent='';return;}
+  const price=q.price,chg=q.change,pct=q.changesPercentage;
+  const up=chg>=0;
+  el.className='ec-price-strip';
+  el.innerHTML=`<span class="ec-price-val">$${price.toFixed(2)}</span>`+
+    (pct!=null?`<span class="ec-price-chg ${up?'up':'dn'}">${up?'+':''}${chg.toFixed(2)} (${up?'+':''}${pct.toFixed(2)}%)</span>`:'');
 }
 
-// Prices
+// Header index prices (SPY, QQQ, BTC)
 async function fetchETF(sym,pId,cId){
-  try{
-    const r=await fetch(_PROXY+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=1d'));
-    const d=await r.json();
-    const meta=d?.chart?.result?.[0]?.meta;
-    if(!meta)return;
-    const price=meta.regularMarketPrice||meta.previousClose;
-    const prev=meta.chartPreviousClose||meta.previousClose;
-    const chg=price&&prev?price-prev:null;
-    const pct=chg&&prev?(chg/prev*100):null;
-    const up=chg==null||chg>=0;
-    document.getElementById(pId).textContent=price?'$'+price.toFixed(2):'—';
-    const el=document.getElementById(cId);
-    el.textContent=chg!=null?(up?'+':'')+chg.toFixed(2)+' ('+(up?'+':'')+pct.toFixed(2)+'%)':'—';
-    el.className='price-chg '+(up?'up':'dn');
-  }catch{}
+  const fmpSym=sym==='BTC'?'BTCUSD':sym;
+  const m=await _fmpQuote(fmpSym);
+  const q=m[fmpSym];if(!q)return;
+  const price=q.price,chg=q.change,pct=q.changesPercentage;
+  const up=chg>=0;
+  const fmt=sym==='BTC'?(price>1000?'$'+Math.round(price).toLocaleString():'$'+price.toFixed(2)):'$'+price.toFixed(2);
+  document.getElementById(pId).textContent=fmt||'—';
+  const el=document.getElementById(cId);
+  el.textContent=chg!=null?(up?'+':'')+chg.toFixed(2)+' ('+(up?'+':'')+pct.toFixed(2)+'%)':'—';
+  el.className='price-chg '+(up?'up':'dn');
+}
+
+// Live calendar tile prices — batch FMP call for all visible tickers
+async function fetchLiveCalendarPrices(){
+  const els=[...document.querySelectorAll('[id^="lp-"]')];
+  if(!els.length)return;
+  const syms=[...new Set(els.map(e=>e.id.slice(3)))];
+  const m=await _fmpQuote(syms.join(','));
+  els.forEach(el=>{
+    const sym=el.id.slice(3),q=m[sym];
+    if(!q||q.price==null)return;
+    const price=q.price,chg=q.change,pct=q.changesPercentage;
+    const up=chg>=0;
+    el.innerHTML='$'+price.toFixed(2)+(pct!=null?' <span style="font-size:8px;color:'+(up?'var(--green)':'var(--red)')+'">'+(up?'+':'')+pct.toFixed(2)+'%</span>':'');
+    el.style.color=up?'var(--green)':'var(--red)';
+  });
 }
 
 // Live clock — updates every minute
@@ -1107,17 +1123,23 @@ setInterval(updateClock,60000);
 setMkt();
 renderWeek();
 fetchCalendarPrices();
+fetchLiveCalendarPrices();
 fetchETF('SPY','pSPY','cSPY');
 fetchETF('QQQ','pQQQ','cQQQ');
+fetchETF('BTC','pBTC','cBTC');
 
 // ── Live updates ──────────────────────────────────────────────────────────────
-// 1. Header ETF prices refresh every 10s
+// 1. Header prices refresh every 10s
 setInterval(()=>{
   fetchETF('SPY','pSPY','cSPY');
   fetchETF('QQQ','pQQQ','cQQQ');
+  fetchETF('BTC','pBTC','cBTC');
 },10000);
 
-// 2. Selected stock price refresh every 5s
+// 2. Calendar tile prices refresh every 30s
+setInterval(fetchLiveCalendarPrices,30000);
+
+// 3. Selected stock price refresh every 5s
 let _livePriceSym=null,_livePriceTimer=null;
 function startLivePriceLoop(sym){
   _livePriceSym=sym;
@@ -1125,7 +1147,7 @@ function startLivePriceLoop(sym){
   _livePriceTimer=setInterval(()=>{if(_livePriceSym)fetchLivePrice(_livePriceSym);},5000);
 }
 
-// 3. Auto-reload when a new build is deployed (check every 2 min)
+// 4. Auto-reload when a new build is deployed (check every 2 min)
 let _pageEtag='';
 async function checkBuildUpdate(){
   try{
@@ -1137,14 +1159,6 @@ async function checkBuildUpdate(){
 }
 checkBuildUpdate();
 setInterval(checkBuildUpdate,120000);
-fetch('https://api.nasdaq.com/api/quote/BTCUSD/info?assetclass=cryptocurrency',
-  {headers:{Accept:'application/json'}}).then(r=>r.json()).then(d=>{
-  const p=d?.data?.primaryData;if(!p)return;
-  const up=!(p.netChange||'').startsWith('-');
-  document.getElementById('pBTC').textContent=p.lastSalePrice||'—';
-  const el=document.getElementById('cBTC');
-  el.textContent=p.netChange||'';el.className='price-chg '+(up?'up':'dn');
-}).catch(()=>{});
 </script>
 </body>
 </html>
