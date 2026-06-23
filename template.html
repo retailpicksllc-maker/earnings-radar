@@ -758,7 +758,7 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
     const actX=estX+bW+gap;
     const rev=revVals[i],revEst=revEstVals[i];
     // Estimate bar (left, lighter blue)
-    if(revEst>0){const h=Math.max((revEst/maxRev)*cH,2);ctx.fillStyle='#facc15';rrect(estX,BASE-h,bW,h,2);ctx.fill();}
+    if(revEst>0){const h=Math.max((revEst/maxRev)*cH,2);ctx.fillStyle='rgba(156,163,175,0.9)';rrect(estX,BASE-h,bW,h,2);ctx.fill();}
     // Actual bar (right, solid blue)
     if(rev>0){const h=Math.max((rev/maxRev)*cH,2);ctx.fillStyle='rgba(59,130,246,.85)';rrect(actX,BASE-h,bW,h,2);ctx.fill();}
     const lbl=qLbl(q.fiscalQtrEnd||'');
@@ -768,7 +768,7 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
     }
   });
   // Legend
-  ctx.fillStyle='#facc15';ctx.fillRect(PAD.l,PAD.t-8,8,5);
+  ctx.fillStyle='rgba(156,163,175,0.9)';ctx.fillRect(PAD.l,PAD.t-8,8,5);
   ctx.fillStyle='rgba(255,255,255,.3)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='left';
   ctx.fillText('Est',PAD.l+10,PAD.t-4);
   ctx.fillStyle='rgba(59,130,246,.9)';ctx.fillRect(PAD.l+30,PAD.t-8,8,5);
@@ -840,7 +840,7 @@ function drawEpsChart(sym,data){
     const estX=cx-grpW/2;
     const actX=estX+bW+gap;
     // Estimate bar (left, gray-purple)
-    if(est!==0){ctx.fillStyle='#facc15';bar(estX,bW,est,2);ctx.fill();}
+    if(est!==0){ctx.fillStyle='rgba(156,163,175,0.9)';bar(estX,bW,est,2);ctx.fill();}
     // Actual bar (right, green/red)
     if(eps!==0){ctx.fillStyle=beat?'rgba(34,197,94,.88)':'rgba(239,68,68,.84)';bar(actX,bW,eps,2);ctx.fill();}
     const lbl=qLbl(q.fiscalQtrEnd||'');
@@ -850,7 +850,7 @@ function drawEpsChart(sym,data){
     }
   });
   // Legend
-  ctx.fillStyle='#facc15';ctx.fillRect(PAD.l,PAD.t-8,8,5);
+  ctx.fillStyle='rgba(156,163,175,0.9)';ctx.fillRect(PAD.l,PAD.t-8,8,5);
   ctx.fillStyle='rgba(255,255,255,.3)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='left';
   ctx.fillText('Est',PAD.l+10,PAD.t-4);
   ctx.fillStyle='rgba(34,197,94,.9)';ctx.fillRect(PAD.l+30,PAD.t-8,8,5);
