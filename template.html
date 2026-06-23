@@ -143,8 +143,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .chart-legend{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
 .leg{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted)}
 .leg-dot{width:8px;height:8px;border-radius:2px}
-  .chart-canvas-wrap{width:100%;height:130px}
-canvas.ec{display:block;width:100%;height:130px}
+  .chart-canvas-wrap{width:100%;height:140px}
+canvas.ec{display:block;width:100%;height:140px}
 /* History table */
 .hist-wrap{padding:0 12px 12px}
 .beat-stat{background:var(--surface2);border-radius:6px;padding:6px 8px;font-size:11px;color:var(--muted);margin-bottom:8px}
@@ -702,7 +702,7 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
 
   const epsChartHtml=`<div class="chart-section">
     <div class="chart-section-title"><span class="chart-section-dot eps-dot"></span>EPS</div>
-    <div class="chart-canvas-wrap" style="height:130px"><canvas class="ec" id="ec_eps_${esc(sym)}" width="320" height="130"></canvas></div>
+    <div class="chart-canvas-wrap" style="height:140px"><canvas class="ec" id="ec_eps_${esc(sym)}" width="320" height="130"></canvas></div>
   </div>`;
 
   const chartHtml=`<div class="chart-wrap">${revChartHtml}${epsChartHtml}</div>`;
@@ -719,7 +719,7 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
   if(!canvas)return;
   const ctx=canvas.getContext('2d');
   const dpr=window.devicePixelRatio||1;
-  const W=canvas.offsetWidth||320,H=130;
+  const W=canvas.offsetWidth||320,H=140;
   canvas.width=W*dpr;canvas.height=H*dpr;
   canvas.style.height=H+'px';
   ctx.scale(dpr,dpr);
@@ -751,18 +751,112 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
   }
   pts.forEach((q,i)=>{
     const cx=PAD.l+i*gW+gW/2;
-    const bW=Math.max(gW*0.70,4);
+    const grpW=Math.max(gW*0.80,6);
+    const gap=Math.max(grpW*0.08,1);
+    const bW=Math.max((grpW-gap)/2,2);
+    const estX=cx-grpW/2;
+    const actX=estX+bW+gap;
     const rev=revVals[i],revEst=revEstVals[i];
-    // Estimate ghost bar
-    if(revEst>0){const h=Math.max((revEst/maxRev)*cH,2);ctx.fillStyle='rgba(96,165,250,.18)';rrect(cx-bW/2,BASE-h,bW,h,3);ctx.fill();}
-    // Actual bar
-    if(rev>0){const h=Math.max((rev/maxRev)*cH,2);const aw=bW*0.72;ctx.fillStyle='rgba(59,130,246,.78)';rrect(cx-aw/2,BASE-h,aw,h,3);ctx.fill();}
+    // Estimate bar (left, lighter blue)
+    if(revEst>0){const h=Math.max((revEst/maxRev)*cH,2);ctx.fillStyle='rgba(96,165,250,.45)';rrect(estX,BASE-h,bW,h,2);ctx.fill();}
+    // Actual bar (right, solid blue)
+    if(rev>0){const h=Math.max((rev/maxRev)*cH,2);ctx.fillStyle='rgba(59,130,246,.85)';rrect(actX,BASE-h,bW,h,2);ctx.fill();}
     const lbl=qLbl(q.fiscalQtrEnd||'');
     if(lbl){
       const show=N<=6||i===0||i===N-1||i%(Math.ceil(N/5))===0;
       if(show){ctx.fillStyle='rgba(255,255,255,.30)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='center';ctx.fillText(lbl,cx,H-6);}
     }
   });
+  // Legend
+  ctx.fillStyle='rgba(96,165,250,.7)';ctx.fillRect(PAD.l,PAD.t-8,8,5);
+  ctx.fillStyle='rgba(255,255,255,.3)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='left';
+  ctx.fillText('Est',PAD.l+10,PAD.t-4);
+  ctx.fillStyle='rgba(59,130,246,.9)';ctx.fillRect(PAD.l+30,PAD.t-8,8,5);
+  ctx.fillText('Act',PAD.l+40,PAD.t-4);
+}
+
+function drawEpsChart(sym,data){
+  const canvas=document.getElementById('ec_eps_'+sym);
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const dpr=window.devicePixelRatio||1;
+  const W=canvas.offsetWidth||320,H=140;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  canvas.style.height=H+'px';
+  ctx.scale(dpr,dpr);
+  const pts=[...data].reverse();
+  const N=pts.length;if(!N)return;
+  const PAD={t:10,r:10,b:24,l:40};
+  const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
+  const gW=cW/N;
+  const epsActuals=pts.map(q=>parseFloat(q.eps)||0);
+  const epsEsts=pts.map(q=>parseFloat(q.consensusForecast)||0);
+  const allVals=[...epsActuals,...epsEsts];
+  const minV=Math.min(...allVals,0);
+  const maxV=Math.max(...allVals,0.01);
+  const range=maxV-minV||0.01;
+  const zeroY=PAD.t+cH*(1-(-minV/range));
+  function toY(v){return PAD.t+cH*(1-((v-minV)/range));}
+  function bar(x,w,val,r){
+    const top=toY(val);
+    const h=zeroY-top;
+    if(Math.abs(h)<1)return;
+    r=Math.min(r,w/2,Math.abs(h)/2);
+    if(h>0){
+      ctx.beginPath();ctx.moveTo(x+r,top);ctx.lineTo(x+w-r,top);
+      ctx.quadraticCurveTo(x+w,top,x+w,top+r);ctx.lineTo(x+w,zeroY);
+      ctx.lineTo(x,zeroY);ctx.lineTo(x,top+r);
+      ctx.quadraticCurveTo(x,top,x+r,top);ctx.closePath();
+    } else {
+      const bot=top+Math.abs(h);
+      ctx.beginPath();ctx.moveTo(x,zeroY);ctx.lineTo(x+w,zeroY);
+      ctx.lineTo(x+w,bot-r);ctx.quadraticCurveTo(x+w,bot,x+w-r,bot);
+      ctx.lineTo(x+r,bot);ctx.quadraticCurveTo(x,bot,x,bot-r);
+      ctx.lineTo(x,zeroY);ctx.closePath();
+    }
+  }
+  const steps=4;
+  for(let i=0;i<=steps;i++){
+    const v=minV+range*i/steps;
+    const y=toY(v);
+    ctx.strokeStyle=Math.abs(v)<range*0.05?'rgba(255,255,255,.15)':'rgba(255,255,255,.04)';
+    ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.22)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='right';
+    ctx.fillText((v>=0?'$':'-$')+Math.abs(v).toFixed(2),PAD.l-3,y+3);
+  }
+  if(minV<0&&maxV>0){
+    ctx.strokeStyle='rgba(255,255,255,.2)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(PAD.l,zeroY);ctx.lineTo(W-PAD.r,zeroY);ctx.stroke();
+  }
+  pts.forEach((q,i)=>{
+    const cx=PAD.l+i*gW+gW/2;
+    const surp=parseFloat(q.percentageSurprise)||0;
+    const hasSurp=q.percentageSurprise!==''&&q.percentageSurprise!=null&&!isNaN(parseFloat(q.percentageSurprise));
+    const beat=hasSurp&&surp>0;
+    const eps=epsActuals[i],est=epsEsts[i];
+    const grpW=Math.max(gW*0.80,6);
+    const gap=Math.max(grpW*0.08,1);
+    const bW=Math.max((grpW-gap)/2,2);
+    const estX=cx-grpW/2;
+    const actX=estX+bW+gap;
+    // Estimate bar (left, gray-purple)
+    if(est!==0){ctx.fillStyle='rgba(168,85,247,.45)';bar(estX,bW,est,2);ctx.fill();}
+    // Actual bar (right, green/red)
+    if(eps!==0){ctx.fillStyle=beat?'rgba(34,197,94,.88)':'rgba(239,68,68,.84)';bar(actX,bW,eps,2);ctx.fill();}
+    const lbl=qLbl(q.fiscalQtrEnd||'');
+    if(lbl){
+      const show=N<=6||i===0||i===N-1||i%(Math.ceil(N/5))===0;
+      if(show){ctx.fillStyle='rgba(255,255,255,.30)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='center';ctx.fillText(lbl,cx,H-6);}
+    }
+  });
+  // Legend
+  ctx.fillStyle='rgba(168,85,247,.65)';ctx.fillRect(PAD.l,PAD.t-8,8,5);
+  ctx.fillStyle='rgba(255,255,255,.3)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='left';
+  ctx.fillText('Est',PAD.l+10,PAD.t-4);
+  ctx.fillStyle='rgba(34,197,94,.9)';ctx.fillRect(PAD.l+30,PAD.t-8,8,5);
+  ctx.fillText('Beat',PAD.l+40,PAD.t-4);
+  ctx.fillStyle='rgba(239,68,68,.9)';ctx.fillRect(PAD.l+68,PAD.t-8,8,5);
+  ctx.fillText('Miss',PAD.l+78,PAD.t-4);
 }
 
 function drawEpsChart(sym,data){
