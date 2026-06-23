@@ -1052,6 +1052,7 @@ function fetchCalendarPrices(){
 }
 
 const FMP_KEY='yEYTL2v0FPQRUMAXSwe93gzPl4MBNnDi';
+const _PROXY='https://corsproxy.io/?';
 
 // ── FMP batch quote ──────────────────────────────────────────────────────────
 async function _fmpQuote(symbols){
@@ -1069,14 +1070,26 @@ async function fetchLivePrice(sym){
   const el=document.getElementById('ecPriceStrip');
   if(!el)return;
   el.className='ec-price-loading';el.textContent='Loading price…';
-  const m=await _fmpQuote(sym);
-  const q=m[sym];
+  const[fmpM,yhM]=await Promise.all([_fmpQuote(sym),_yhBatchQuote([sym])]);
+  const q=fmpM[sym];
   if(!q||q.price==null){el.textContent='';return;}
   const price=q.price,chg=q.change,pct=q.changesPercentage;
   const up=chg>=0;
+  const yq=yhM[sym];
+  const state=yq?.marketState;
+  let extLine='';
+  if(state==='POST'&&yq?.postMarketPrice){
+    const ep=yq.postMarketPrice,epct=yq.postMarketChangePercent;
+    const eu=epct>=0;
+    extLine=`<span class="ec-price-chg ${eu?'up':'dn'}" style="font-size:11px;margin-left:8px">AH $${ep.toFixed(2)} ${eu?'+':''}${epct!=null?epct.toFixed(2)+'%':''}</span>`;
+  }else if(state==='PRE'&&yq?.preMarketPrice){
+    const ep=yq.preMarketPrice,epct=yq.preMarketChangePercent;
+    const eu=epct>=0;
+    extLine=`<span class="ec-price-chg ${eu?'up':'dn'}" style="font-size:11px;margin-left:8px">PM $${ep.toFixed(2)} ${eu?'+':''}${epct!=null?epct.toFixed(2)+'%':''}</span>`;
+  }
   el.className='ec-price-strip';
   el.innerHTML=`<span class="ec-price-val">$${price.toFixed(2)}</span>`+
-    (pct!=null?`<span class="ec-price-chg ${up?'up':'dn'}">${up?'+':''}${chg.toFixed(2)} (${up?'+':''}${pct.toFixed(2)}%)</span>`:'');
+    (pct!=null?`<span class="ec-price-chg ${up?'up':'dn'}">${up?'+':''}${chg.toFixed(2)} (${up?'+':''}${pct.toFixed(2)}%)</span>`:'')+extLine;
 }
 
 // Header index prices (SPY, QQQ, BTC)
@@ -1093,19 +1106,45 @@ async function fetchETF(sym,pId,cId){
   el.className='price-chg '+(up?'up':'dn');
 }
 
-// Live calendar tile prices — batch FMP call for all visible tickers
+// Yahoo Finance batch quote helper (for extended hours)
+async function _yhBatchQuote(syms){
+  try{
+    const url='https://query1.finance.yahoo.com/v7/finance/quote?symbols='+syms.join(',')+'&fields=regularMarketPrice,postMarketPrice,postMarketChangePercent,preMarketPrice,preMarketChangePercent,marketState';
+    const r=await fetch(_PROXY+encodeURIComponent(url));
+    const d=await r.json();
+    const m={};(d?.quoteResponse?.result||[]).forEach(q=>{m[q.symbol]=q;});
+    return m;
+  }catch{return{};}
+}
+
+// Build extended hours HTML from a Yahoo quote object
+function _extHtml(yq){
+  const state=yq?.marketState;
+  let ep=null,epct=null,lbl=null;
+  if(state==='POST'&&yq?.postMarketPrice){ep=yq.postMarketPrice;epct=yq.postMarketChangePercent;lbl='AH';}
+  else if(state==='PRE'&&yq?.preMarketPrice){ep=yq.preMarketPrice;epct=yq.preMarketChangePercent;lbl='PM';}
+  if(ep==null)return'';
+  const eu=epct>=0;
+  return'<br><span style="font-size:9px;font-weight:700;color:'+(eu?'var(--green)':'var(--red)')+'">$'+ep.toFixed(2)+'</span>'+
+    ' <span style="font-size:8px;color:var(--faint)">'+lbl+'</span>'+
+    (epct!=null?'<span style="font-size:8px;color:'+(eu?'var(--green)':'var(--red)')+'"> '+(eu?'+':'')+epct.toFixed(2)+'%</span>':'');
+}
+
+// Live calendar tile prices — FMP regular + Yahoo after-hours
 async function fetchLiveCalendarPrices(){
   const els=[...document.querySelectorAll('[id^="lp-"]')];
   if(!els.length)return;
   const syms=[...new Set(els.map(e=>e.id.slice(3)))];
-  const m=await _fmpQuote(syms.join(','));
+  const[fmpM,yhM]=await Promise.all([_fmpQuote(syms.join(',')),_yhBatchQuote(syms)]);
   els.forEach(el=>{
-    const sym=el.id.slice(3),q=m[sym];
+    const sym=el.id.slice(3),q=fmpM[sym];
     if(!q||q.price==null)return;
     const price=q.price,chg=q.change,pct=q.changesPercentage;
     const up=chg>=0;
-    el.innerHTML='$'+price.toFixed(2)+(pct!=null?' <span style="font-size:8px;color:'+(up?'var(--green)':'var(--red)')+'">'+(up?'+':'')+pct.toFixed(2)+'%</span>':'');
-    el.style.color=up?'var(--green)':'var(--red)';
+    const closeLine='$'+price.toFixed(2)+(pct!=null?' <span style="font-size:8px;color:'+(up?'var(--green)':'var(--red)')+'">'+(up?'+':'')+pct.toFixed(2)+'%</span>':'');
+    const ext=_extHtml(yhM[sym]);
+    el.innerHTML=closeLine+ext;
+    el.style.color=ext?'var(--text)':(up?'var(--green)':'var(--red)');
   });
 }
 
