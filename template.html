@@ -672,7 +672,7 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
       </div>
       <span class="qslide-badge upcoming-badge">Est</span>
       ${epsEst?`<div class="qslide-row"><span class="qslide-row-lbl">EPS</span><span class="qslide-row-val" style="color:var(--accent2)">${epsEst}</span></div>`:''}
-      ${revEst&&revEst!=='—'?`<div class="qslide-row"><span class="qslide-row-lbl">Revenue</span><span class="qslide-row-val blue">${revEst}</span></div>`:''}
+      ${revEst&&revEst!=='—'?`<div class="qslide-row"><span class="qslide-row-lbl">Rev Est</span><span class="qslide-row-val blue">${revEst}</span></div>`:''}
     </div>`;
   }
 
@@ -685,7 +685,7 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
     const epsEf=_epsEstDict&&_epsEstDict[q.fiscalQtrEnd]!=null?_epsEstDict[q.fiscalQtrEnd]:null;
     const epsEst=epsCf??epsEf;
     const revVal=q.revActual!=null?q.revActual:_nearestRev(_revDict,q.fiscalQtrEnd);
-    const revEst=_revEstDict?(_revEstDict[q.fiscalQtrEnd]!=null?_revEstDict[q.fiscalQtrEnd]:(qIdx===0?(Object.values(_revEstDict)[0]||null):null)):null;
+    const revEst=_revEstDict&&_revEstDict[q.fiscalQtrEnd]!=null?_revEstDict[q.fiscalQtrEnd]:null;
     return`<div class="qslide">
       <div>
         <div class="qslide-lbl">Quarter</div>
@@ -696,7 +696,7 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
       <div class="qslide-row"><span class="qslide-row-lbl">Est</span><span class="qslide-row-val muted">${epsEst!=null?'$'+epsEst.toFixed(2):'—'}</span></div>
       ${hasSurp?`<div class="qslide-surp ${beat?'beat':'miss'}">${(s>0?'+':'')+s.toFixed(1)}%</div>`:''}
       ${hasRev?`<div class="qslide-row" style="margin-top:3px"><span class="qslide-row-lbl">Rev</span><span class="qslide-row-val blue">${fmtM(revVal)}</span></div>`:''}
-      ${hasRev?`<div class="qslide-row"><span class="qslide-row-lbl">Rev Est</span><span class="qslide-row-val muted">${fmtM(revEst)}</span></div>`:''}
+      ${(hasRev&&revEst!=null)?`<div class="qslide-row"><span class="qslide-row-lbl">Rev Est</span><span class="qslide-row-val muted">${fmtM(revEst)}</span></div>`:''}
     </div>`;
   }).join('');
 
