@@ -707,7 +707,7 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
 
   const chartHtml=`<div class="chart-wrap">${revChartHtml}${epsChartHtml}</div>`;
 
-  pane.innerHTML=`<div class="slides-wrap">${upcomingSlide}${histSlides}</div>${beatStat}${chartHtml}`;
+  pane.innerHTML=`${chartHtml}${beatStat}<div class="slides-wrap">${upcomingSlide}${histSlides}</div>`;
   setTimeout(()=>{
     if(hasRev)drawRevChart(sym,display,_revDict,_revEstDict);
     drawEpsChart(sym,display);
