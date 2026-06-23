@@ -308,7 +308,8 @@ function logoHtml(sym,sz){
 // Week state
 let wOff=0;
 const TODAY=new Date();
-const TODAY_ISO=TODAY.toISOString().split('T')[0];
+function _isoLocal(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+const TODAY_ISO=_isoLocal(TODAY);
 let selSym=null;
 const DAYS=['Mon','Tue','Wed','Thu','Fri'];
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -318,7 +319,7 @@ function weekDates(off){
   const dow=d.getDay()||7;
   d.setDate(d.getDate()-(dow-1)+off*7);
   const out=[];
-  for(let i=0;i<5;i++){const x=new Date(d);x.setDate(d.getDate()+i);out.push(x.toISOString().split('T')[0]);}
+  for(let i=0;i<5;i++){const x=new Date(d);x.setDate(d.getDate()+i);out.push(_isoLocal(x));}
   return out;
 }
 function fmtWR(dates){
@@ -388,7 +389,7 @@ function buildFeed(weekDates){
   list.innerHTML='';
   const items=[];
   for(let d=new Date(TODAY),limit=0;limit<60&&items.length<25;d.setDate(d.getDate()-1),limit++){
-    const iso=d.toISOString().split('T')[0];
+    const iso=_isoLocal(d);
     const rows=PAST_DATA[iso]||[];
     rows.slice(0,10).forEach(r=>{
       const hArr=HISTORY[r.symbol]||[];
