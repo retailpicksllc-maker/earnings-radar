@@ -733,7 +733,7 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
   const gW=cW/N;
   const BASE=PAD.t+cH;
   const revVals=pts.map(q=>Math.max(q.revActual!=null?q.revActual:(_nearestRev(_revDict,q.fiscalQtrEnd)||0),0));
-  const revEstVals=pts.map(q=>Math.max((_revEstDict&&_revEstDict[q.fiscalQtrEnd])||0,0));
+  const revEstVals=pts.map(()=>0); // REV_EST has no historical keys
   const maxRev=Math.max(...revVals,...revEstVals,1);
   function rrect(x,y,w,h,r){
     if(h<1){h=1;r=0;}r=Math.min(r,w/2,h/2);
@@ -754,28 +754,20 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
   }
   pts.forEach((q,i)=>{
     const cx=PAD.l+i*gW+gW/2;
-    const grpW=Math.max(gW*0.80,6);
-    const gap=Math.max(grpW*0.08,1);
-    const bW=Math.max((grpW-gap)/2,2);
-    const estX=cx-grpW/2;
-    const actX=estX+bW+gap;
-    const rev=revVals[i],revEst=revEstVals[i];
-    // Estimate bar (left, lighter blue)
-    if(revEst>0){const h=Math.max((revEst/maxRev)*cH,2);ctx.fillStyle='rgba(156,163,175,0.9)';rrect(estX,BASE-h,bW,h,2);ctx.fill();}
-    // Actual bar (right, solid blue)
-    if(rev>0){const h=Math.max((rev/maxRev)*cH,2);ctx.fillStyle='rgba(59,130,246,.85)';rrect(actX,BASE-h,bW,h,2);ctx.fill();}
+    const bW=Math.max(gW*0.72,4);
+    const rev=revVals[i];
+    // Single centered actual bar
+    if(rev>0){const h=Math.max((rev/maxRev)*cH,2);ctx.fillStyle='rgba(59,130,246,.85)';rrect(cx-bW/2,BASE-h,bW,h,3);ctx.fill();}
     const lbl=qLbl(q.fiscalQtrEnd||'');
     if(lbl){
       const show=N<=6||i===0||i===N-1||i%(Math.ceil(N/5))===0;
       if(show){ctx.fillStyle='rgba(255,255,255,.30)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='center';ctx.fillText(lbl,cx,H-6);}
     }
   });
-  // Legend
-  ctx.fillStyle='rgba(156,163,175,0.9)';ctx.fillRect(PAD.l,PAD.t-8,8,5);
+  // Legend (no Est — no historical rev estimate data available)
+  ctx.fillStyle='rgba(59,130,246,.9)';ctx.fillRect(PAD.l,PAD.t-8,8,5);
   ctx.fillStyle='rgba(255,255,255,.3)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='left';
-  ctx.fillText('Est',PAD.l+10,PAD.t-4);
-  ctx.fillStyle='rgba(59,130,246,.9)';ctx.fillRect(PAD.l+30,PAD.t-8,8,5);
-  ctx.fillText('Act',PAD.l+40,PAD.t-4);
+  ctx.fillText('Revenue',PAD.l+10,PAD.t-4);
 }
 
 function drawEpsChart(sym,data){
