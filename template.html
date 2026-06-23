@@ -685,7 +685,7 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
     const epsEf=_epsEstDict&&_epsEstDict[q.fiscalQtrEnd]!=null?_epsEstDict[q.fiscalQtrEnd]:null;
     const epsEst=epsCf??epsEf;
     const revVal=q.revActual!=null?q.revActual:_nearestRev(_revDict,q.fiscalQtrEnd);
-    const revEst=_revEstDict?(_revEstDict[q.fiscalQtrEnd]||null):null;
+    const revEst=_revEstDict?(_revEstDict[q.fiscalQtrEnd]!=null?_revEstDict[q.fiscalQtrEnd]:(Object.values(_revEstDict)[0]||null)):null;
     return`<div class="qslide">
       <div>
         <div class="qslide-lbl">Quarter</div>
