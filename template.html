@@ -134,8 +134,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .chart-legend{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
 .leg{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted)}
 .leg-dot{width:8px;height:8px;border-radius:2px}
-.chart-canvas-wrap{width:100%;height:155px}
-canvas.ec{display:block;width:100%;height:155px}
+.chart-canvas-wrap{width:100%;height:180px}
+canvas.ec{display:block;width:100%;height:180px}
 /* History table */
 .hist-wrap{padding:0 12px 12px}
 .beat-stat{background:var(--surface2);border-radius:6px;padding:6px 8px;font-size:11px;color:var(--muted);margin-bottom:8px}
@@ -677,76 +677,97 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
 
   const chartHtml=`<div class="chart-wrap">
     <div class="chart-legend">
-      ${hasRev?'<div class="leg"><div class="leg-dot" style="background:var(--blue)"></div>Revenue</div>':''}
-      <div class="leg"><div class="leg-dot" style="background:var(--green)"></div>EPS Beat</div>
-      <div class="leg"><div class="leg-dot" style="background:var(--red)"></div>EPS Miss</div>
-      <div class="leg"><div class="leg-dot" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3)"></div>Est</div>
+      ${hasRev?'<div class="leg"><div class="leg-dot" style="background:rgba(96,165,250,.3);border:1px solid rgba(96,165,250,.5)"></div><span>Rev Est</span></div>':''}
+      ${hasRev?'<div class="leg"><div class="leg-dot" style="background:rgba(59,130,246,.8)"></div><span>Revenue</span></div>':''}
+      <div class="leg"><div class="leg-dot" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2)"></div><span>EPS Est</span></div>
+      <div class="leg"><div class="leg-dot" style="background:var(--green)"></div><span>Beat</span></div>
+      <div class="leg"><div class="leg-dot" style="background:var(--red)"></div><span>Miss</span></div>
     </div>
-    <div class="chart-canvas-wrap"><canvas class="ec" id="ec_${esc(sym)}" width="320" height="155"></canvas></div>
+    <div class="chart-canvas-wrap"><canvas class="ec" id="ec_${esc(sym)}" width="320" height="180"></canvas></div>
   </div>`;
 
   pane.innerHTML=`<div class="slides-wrap">${upcomingSlide}${histSlides}</div>${beatStat}${chartHtml}`;
-  setTimeout(()=>drawChart(sym,display,hasRev,_revDict),60);
+  setTimeout(()=>drawChart(sym,display,hasRev,_revDict,_revEstDict),60);
 }
 
-function drawChart(sym,data,hasRev,_revDict){
+function drawChart(sym,data,hasRev,_revDict,_revEstDict){
   const canvas=document.getElementById('ec_'+sym);
   if(!canvas)return;
   const ctx=canvas.getContext('2d');
   const dpr=window.devicePixelRatio||1;
-  const W=canvas.offsetWidth||320,H=155;
+  const W=canvas.offsetWidth||320,H=180;
   canvas.width=W*dpr;canvas.height=H*dpr;
+  canvas.style.height=H+'px';
   ctx.scale(dpr,dpr);
   const pts=[...data].reverse();
   const N=pts.length;if(!N)return;
-  const PAD={t:8,r:8,b:24,l:hasRev?44:4};
+  const PAD={t:14,r:10,b:26,l:hasRev?46:8};
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
   const gW=cW/N;
-  const bW=Math.max(Math.floor(gW*.65),4);
-  const maxRev=hasRev?Math.max(...pts.map(q=>q.revActual!=null?q.revActual:(_nearestRev(_revDict,q.fiscalQtrEnd)||0)),1):0;
-  const maxEps=Math.max(...pts.flatMap(q=>[Math.abs(parseFloat(q.eps)||0),Math.abs(parseFloat(q.consensusForecast)||0)]),0.01);
-  // Grid lines
+  const BASE=PAD.t+cH;
+  // Compute ranges
+  const revVals=pts.map(q=>Math.max(q.revActual!=null?q.revActual:(_nearestRev(_revDict,q.fiscalQtrEnd)||0),0));
+  const revEstVals=pts.map(q=>Math.max((_revEstDict&&_revEstDict[q.fiscalQtrEnd])||0,0));
+  const maxRev=hasRev?Math.max(...revVals,...revEstVals,1):0;
+  const epsActuals=pts.map(q=>parseFloat(q.eps)||0);
+  const epsEsts=pts.map(q=>parseFloat(q.consensusForecast)||0);
+  const maxEps=Math.max(...epsActuals.map(Math.abs),...epsEsts.map(Math.abs),0.01);
+  const EPS_H=cH*0.46;
+  // Rounded-top rect helper
+  function rrect(x,y,w,h,r){
+    if(h<1){h=1;r=0;}r=Math.min(r,w/2,h/2);
+    ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);
+    ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h);
+    ctx.lineTo(x,y+h);ctx.lineTo(x,y+r);
+    ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
+  }
+  // Grid + Y-axis labels
   for(let i=0;i<=4;i++){
     const y=PAD.t+cH*(1-i/4);
-    ctx.strokeStyle='rgba(255,255,255,.05)';ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
-    if(hasRev){
-      ctx.fillStyle='rgba(255,255,255,.28)';ctx.font='8px sans-serif';ctx.textAlign='right';
+    ctx.strokeStyle=i===0?'rgba(255,255,255,.09)':'rgba(255,255,255,.04)';
+    ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+    if(hasRev&&i>0){
       const v=maxRev*i/4;
-      ctx.fillText(v>=1000?(v/1000).toFixed(0)+'B':v.toFixed(0)+'M',PAD.l-3,y+3);
+      ctx.fillStyle='rgba(255,255,255,.22)';ctx.font='8.5px -apple-system,sans-serif';ctx.textAlign='right';
+      ctx.fillText(v>=1e9?(v/1e9).toFixed(1)+'B':v>=1e6?(v/1e6).toFixed(0)+'M':v.toFixed(0)+'M',PAD.l-4,y+3);
     }
   }
   pts.forEach((q,i)=>{
     const cx=PAD.l+i*gW+gW/2;
-    const eps=parseFloat(q.eps)||0;
-    const est=parseFloat(q.consensusForecast)||0;
     const surp=parseFloat(q.percentageSurprise)||0;
-    const rev=q.revActual!=null?q.revActual:(_nearestRev(_revDict,q.fiscalQtrEnd)||0);
-    // Rev bar
-    if(hasRev&&rev>0){
-      const rh=Math.max((rev/maxRev)*cH,2);
-      ctx.fillStyle='rgba(59,130,246,.55)';
-      ctx.fillRect(cx-bW/2,PAD.t+cH-rh,bW,rh);
+    const hasSurp=q.percentageSurprise!==''&&q.percentageSurprise!=null&&!isNaN(parseFloat(q.percentageSurprise));
+    const beat=hasSurp&&surp>0;
+    const rev=revVals[i],revEst=revEstVals[i];
+    const eps=epsActuals[i],est=epsEsts[i];
+    const totalW=gW*0.84;
+    if(hasRev){
+      const revW=Math.max(totalW*0.56,5);
+      const epsW=Math.max(totalW*0.32,4);
+      const GAP=Math.max(gW*0.06,2);
+      const startX=cx-totalW/2;
+      const revX=startX,epsX=startX+revW+GAP;
+      // Rev estimate ghost
+      if(revEst>0){const h=Math.max((revEst/maxRev)*cH,2);ctx.fillStyle='rgba(96,165,250,.2)';rrect(revX,BASE-h,revW,h,3);ctx.fill();}
+      // Rev actual
+      if(rev>0){const h=Math.max((rev/maxRev)*cH,2);ctx.fillStyle='rgba(59,130,246,.72)';rrect(revX,BASE-h,revW,h,3);ctx.fill();}
+      // EPS estimate ghost (full width)
+      if(est&&maxEps>0){const h=Math.max((Math.abs(est)/maxEps)*EPS_H,2);ctx.fillStyle='rgba(255,255,255,.11)';rrect(epsX,BASE-h,epsW,h,3);ctx.fill();}
+      // EPS actual (slightly narrower, centered)
+      if(eps&&maxEps>0){const h=Math.max((Math.abs(eps)/maxEps)*EPS_H,2);const aw=Math.max(epsW*.72,3);const ax=epsX+(epsW-aw)/2;ctx.fillStyle=beat?'rgba(34,197,94,.88)':'rgba(239,68,68,.84)';rrect(ax,BASE-h,aw,h,3);ctx.fill();}
+    } else {
+      const bW=Math.max(totalW,5);
+      const bX=cx-bW/2;
+      const aW=Math.max(bW*.70,4);const aX=cx-aW/2;
+      // EPS estimate ghost
+      if(est&&maxEps>0){const h=Math.max((Math.abs(est)/maxEps)*cH*.90,2);ctx.fillStyle='rgba(255,255,255,.11)';rrect(bX,BASE-h,bW,h,3);ctx.fill();}
+      // EPS actual
+      if(eps&&maxEps>0){const h=Math.max((Math.abs(eps)/maxEps)*cH*.90,2);ctx.fillStyle=beat?'rgba(34,197,94,.88)':'rgba(239,68,68,.84)';rrect(aX,BASE-h,aW,h,3);ctx.fill();}
     }
-    // EPS est outline
-    if(est&&maxEps>0){
-      const eh=Math.max((Math.abs(est)/maxEps)*cH*.44,2);
-      const ew=Math.max(bW*.38,3);
-      ctx.strokeStyle='rgba(255,255,255,.3)';ctx.lineWidth=1;
-      ctx.strokeRect(cx-ew/2,PAD.t+cH-eh,ew,eh);
-    }
-    // EPS actual bar
-    if(eps&&maxEps>0){
-      const eh=Math.max((Math.abs(eps)/maxEps)*cH*.44,2);
-      const ew=Math.max(bW*.36,3);
-      ctx.fillStyle=surp>0?'rgba(34,197,94,.9)':'rgba(239,68,68,.85)';
-      ctx.fillRect(cx-ew/2,PAD.t+cH-eh,ew,eh);
-    }
-    // Label
+    // Quarter label
     const lbl=qLbl(q.fiscalQtrEnd||'');
-    if(lbl&&(i===0||i===N-1||N<=8||(i%(Math.ceil(N/6))===0))){
-      ctx.fillStyle='rgba(255,255,255,.3)';ctx.font='8px sans-serif';ctx.textAlign='center';
-      ctx.fillText(lbl,cx,H-5);
+    if(lbl){
+      const show=N<=6||i===0||i===N-1||i%(Math.ceil(N/5))===0;
+      if(show){ctx.fillStyle='rgba(255,255,255,.32)';ctx.font='8.5px -apple-system,sans-serif';ctx.textAlign='center';ctx.fillText(lbl,cx,H-8);}
     }
   });
 }
