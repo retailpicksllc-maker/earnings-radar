@@ -677,7 +677,7 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
   }
 
   // History slides
-  const histSlides=display.map(q=>{
+  const histSlides=display.map((q,qIdx)=>{
     const s=parseFloat(q.percentageSurprise);
     const hasSurp=q.percentageSurprise!==''&&q.percentageSurprise!=null&&!isNaN(s);
     const beat=hasSurp&&s>0;
@@ -685,7 +685,7 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
     const epsEf=_epsEstDict&&_epsEstDict[q.fiscalQtrEnd]!=null?_epsEstDict[q.fiscalQtrEnd]:null;
     const epsEst=epsCf??epsEf;
     const revVal=q.revActual!=null?q.revActual:_nearestRev(_revDict,q.fiscalQtrEnd);
-    const revEst=_revEstDict&&_revEstDict[q.fiscalQtrEnd]!=null?_revEstDict[q.fiscalQtrEnd]:null;
+    const revEst=_revEstDict?(_revEstDict[q.fiscalQtrEnd]!=null?_revEstDict[q.fiscalQtrEnd]:(qIdx===0?(Object.values(_revEstDict)[0]||null):null)):null;
     return`<div class="qslide">
       <div>
         <div class="qslide-lbl">Quarter</div>
