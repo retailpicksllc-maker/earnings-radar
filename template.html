@@ -1095,10 +1095,10 @@ async function fetchLivePrice(sym){
   const yq=yhM[sym];
   const state=yq?.marketState;
   let extLine='';
-  if(state==='POST'&&yq?.postMarketPrice){
+  if((state==='POST'||state==='CLOSED')&&yq?.postMarketPrice){
     const ep=yq.postMarketPrice,epct=yq.postMarketChangePercent;
     const eu=epct>=0;
-    extLine=`<span class="ec-price-chg ${eu?'up':'dn'}" style="font-size:11px;margin-left:8px">AH $${ep.toFixed(2)} ${eu?'+':''}${epct!=null?epct.toFixed(2)+'%':''}</span>`;
+    extLine=`<span class="ec-price-chg ${eu?'up':'dn'}" style="font-size:11px;margin-left:8px">🌙 AH $${ep.toFixed(2)} ${eu?'+':''}${epct!=null?epct.toFixed(2)+'%':''}</span>`;
   }else if(state==='PRE'&&yq?.preMarketPrice){
     const ep=yq.preMarketPrice,epct=yq.preMarketChangePercent;
     const eu=epct>=0;
@@ -1137,12 +1137,17 @@ async function _yhBatchQuote(syms){
 // Build extended hours HTML from a Yahoo quote object
 function _extHtml(yq){
   const state=yq?.marketState;
-  let ep=null,epct=null,lbl=null;
-  if(state==='POST'&&yq?.postMarketPrice){ep=yq.postMarketPrice;epct=yq.postMarketChangePercent;lbl='AH';}
-  else if(state==='PRE'&&yq?.preMarketPrice){ep=yq.preMarketPrice;epct=yq.preMarketChangePercent;lbl='PM';}
+  let ep=null,epct=null,lbl=null,moon=false;
+  if((state==='POST'||state==='CLOSED')&&yq?.postMarketPrice){
+    ep=yq.postMarketPrice;epct=yq.postMarketChangePercent;lbl='AH';moon=true;
+  }else if(state==='PRE'&&yq?.preMarketPrice){
+    ep=yq.preMarketPrice;epct=yq.preMarketChangePercent;lbl='PM';
+  }
   if(ep==null)return'';
   const eu=epct>=0;
-  return'<br><span style="font-size:9px;font-weight:700;color:'+(eu?'var(--green)':'var(--red)')+'">$'+ep.toFixed(2)+'</span>'+
+  return'<br>'+
+    (moon?'<span style="font-size:9px">🌙</span> ':'')+
+    '<span style="font-size:9px;font-weight:700;color:'+(eu?'var(--green)':'var(--red)')+'">$'+ep.toFixed(2)+'</span>'+
     ' <span style="font-size:8px;color:var(--faint)">'+lbl+'</span>'+
     (epct!=null?'<span style="font-size:8px;color:'+(eu?'var(--green)':'var(--red)')+'"> '+(eu?'+':'')+epct.toFixed(2)+'%</span>':'');
 }
