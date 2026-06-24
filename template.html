@@ -1071,76 +1071,71 @@ setInterval(checkBuildUpdate,120000);
 function openEarningsCall(sym) {
   if (!sym) return;
   const m = META[sym] || {};
-
-  // Is company reporting today?
-  const todayRows = (DATA[TODAY_ISO] || []).filter(r => r.symbol === sym);
-  const isLiveToday = todayRows.length > 0;
-  const liveRow = todayRows[0] || {};
-  const liveTime = liveRow.time === 'time-pre-market' ? 'Before Open' :
-                   liveRow.time === 'time-after-hours' ? 'After Hours' : 'TBD';
-
-  // Most recent reported quarter
-  let lastIso = '';
-  for (const iso of Object.keys(PAST_DATA).sort().reverse()) {
-    if ((PAST_DATA[iso] || []).find(r => r.symbol === sym)) { lastIso = iso; break; }
-  }
-  const lastQ = lastIso ? (PAST_DATA[lastIso] || []).find(r => r.symbol === sym) : null;
-  const qLabel = lastQ ? (lastQ.fiscalQuarterEnding || lastIso) : '';
-
-  // Company name
-  let name = m.name || sym;
-  if (!name || name === sym) {
+  let name = m.name || '';
+  if (!name) {
     for (const iso of Object.keys(PAST_DATA)) {
       const r = (PAST_DATA[iso] || []).find(r => r.symbol === sym);
       if (r && r.name) { name = r.name; break; }
     }
   }
 
-  // Build URLs
-  const saUrl = `https://seekingalpha.com/symbol/${encodeURIComponent(sym)}/earnings/transcripts`;
-  const roicUrl = `https://roic.ai/company/${encodeURIComponent(sym)}/transcript`;
-  const irSearch = `https://www.google.com/search?q=${encodeURIComponent(sym + ' ' + name + ' investor relations earnings webcast')}`;
-  const yhUrl = `https://finance.yahoo.com/quote/${encodeURIComponent(sym)}/events/`;
+  // Is reporting today?
+  const todayRows = (DATA[TODAY_ISO] || []).filter(r => r.symbol === sym);
+  const isLive = todayRows.length > 0;
+  const liveRow = todayRows[0] || {};
+  const liveTime = liveRow.time === 'time-pre-market' ? 'Before Open' :
+                   liveRow.time === 'time-after-hours' ? 'After Hours' : '';
 
-  const liveHtml = isLiveToday ? `
-    <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:rgba(239,68,68,.12);border-bottom:1px solid rgba(239,68,68,.2)">
-      <span style="width:8px;height:8px;border-radius:50%;background:#ef4444;animation:pulse 1.5s infinite;flex-shrink:0"></span>
-      <div>
-        <div style="font-size:13px;font-weight:700;color:#ef4444">Reports Today · ${liveTime}</div>
-        <div style="font-size:11px;color:var(--muted)">Live webcast may be available on IR page</div>
-      </div>
-    </div>` : '';
+  // Most recent quarter label
+  let lastQ = '', lastFQE = '';
+  for (const iso of Object.keys(PAST_DATA).sort().reverse()) {
+    const r = (PAST_DATA[iso] || []).find(r => r.symbol === sym);
+    if (r) { lastQ = iso; lastFQE = r.fiscalQuarterEnding || ''; break; }
+  }
 
-  const lastQHtml = lastIso ? `
-    <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--faint)">
-      Most Recent: ${qLabel}
-    </div>` : '';
+  // YouTube search query — try to get the latest earnings call
+  const qStr = lastFQE ? lastFQE + ' ' : '';
+  const ytQuery = encodeURIComponent(`${sym} ${name} ${qStr}earnings call`);
+  const ytEmbed = `https://www.youtube.com/embed?listType=search&list=${ytQuery}&autoplay=0`;
 
-  const links = [
-    { icon: '📄', label: 'Transcript', sub: 'Seeking Alpha', url: saUrl },
-    { icon: '🎧', label: 'Call Recording', sub: 'Roic.ai', url: roicUrl },
-    { icon: '📡', label: 'Live Webcast / IR', sub: 'Investor Relations', url: irSearch },
-    { icon: '📅', label: 'Events Calendar', sub: 'Yahoo Finance', url: yhUrl },
-  ].map(l => `
-    <a href="${l.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--border);text-decoration:none;color:var(--text)">
-      <span style="font-size:22px;flex-shrink:0">${l.icon}</span>
+  const modal = document.getElementById('callModal');
+  const body = document.getElementById('callModalBody');
+
+  body.innerHTML = `
+    <div style="padding:14px 16px 10px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
+      <span style="font-size:20px">🎧</span>
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600">${l.label}</div>
-        <div style="font-size:11px;color:var(--muted)">${l.sub}</div>
+        <div style="font-size:14px;font-weight:700">${esc(sym)} Earnings Call</div>
+        <div style="font-size:11px;color:var(--muted)">${lastFQE || 'Most Recent'}</div>
       </div>
-      <span style="color:var(--faint);font-size:14px">›</span>
-    </a>`).join('');
-
-  document.getElementById('callModalBody').innerHTML = `
-    ${liveHtml}
-    ${lastQHtml}
-    <div style="padding:10px 16px 6px;font-size:13px;font-weight:700">${sym} Earnings Call</div>
-    ${links}
-    <div style="padding:10px 16px 16px;font-size:10px;color:var(--faint)">Links open in a new tab. Transcript availability depends on the source.</div>
+      ${isLive ? `<span style="display:flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;background:rgba(239,68,68,.15);font-size:11px;font-weight:700;color:#ef4444"><span style="width:7px;height:7px;border-radius:50%;background:#ef4444;animation:pulse 1.5s infinite"></span>TODAY${liveTime?' · '+liveTime:''}</span>` : ''}
+    </div>
+    <div style="position:relative;padding-bottom:56.25%;height:0;background:#000">
+      <iframe
+        src="${ytEmbed}"
+        style="position:absolute;top:0;left:0;width:100%;height:100%;border:none"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen
+        loading="lazy">
+      </iframe>
+    </div>
+    <div style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--border)">
+      <a href="https://www.youtube.com/results?search_query=${ytQuery}" target="_blank" rel="noopener"
+         style="font-size:11px;color:var(--accent2);text-decoration:none">Open in YouTube ↗</a>
+      <span style="color:var(--border)">·</span>
+      <a href="https://seekingalpha.com/symbol/${encodeURIComponent(sym)}/earnings/transcripts" target="_blank" rel="noopener"
+         style="font-size:11px;color:var(--muted);text-decoration:none">Transcript ↗</a>
+      <span style="color:var(--border)">·</span>
+      <a href="https://www.google.com/search?q=${encodeURIComponent(sym+' '+name+' investor relations earnings webcast')}" target="_blank" rel="noopener"
+         style="font-size:11px;color:var(--muted);text-decoration:none">IR Webcast ↗</a>
+    </div>
   `;
-  document.getElementById('callModal').style.display = 'flex';
+  modal.style.display = 'flex';
 }
 function closeCallModal() {
+  // Kill iframe src to stop video
+  const iframe = document.querySelector('#callModalBody iframe');
+  if (iframe) iframe.src = '';
   document.getElementById('callModal').style.display = 'none';
 }
 
@@ -1510,7 +1505,7 @@ function closeReport(){
 
 <!-- ── Earnings Call Modal ───────────────────────────────────────────── -->
 <div id="callModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center" onclick="if(event.target===this)closeCallModal()">
-  <div style="width:min(380px,94vw);background:var(--surface);border:1px solid var(--border2);border-radius:16px;overflow:hidden;position:relative">
+  <div style="width:min(600px,96vw);background:var(--surface);border:1px solid var(--border2);border-radius:16px;overflow:hidden;position:relative">
     <button onclick="closeCallModal()" style="position:absolute;top:12px;right:12px;width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.1);border:1px solid var(--border2);color:var(--text);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;z-index:1">&#10005;</button>
     <div id="callModalBody"></div>
   </div>
