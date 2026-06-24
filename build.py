@@ -107,13 +107,12 @@ def fetch_finnhub_range(from_d, to_d):
 all_upcoming = fetch_finnhub_range(from_upcoming, to_upcoming)
 earnings = {}
 for row in all_upcoming:
-    if row['time'] in ('time-pre-market', 'time-after-hours'):
-        dt = row.get('date', '')
-        if dt:
-            earnings.setdefault(dt, []).append(row)
+    dt = row.get('date', '')
+    if dt:
+        earnings.setdefault(dt, []).append(row)
 
 total_companies = sum(len(v) for v in earnings.values())
-print(f"  Got {total_companies} confirmed companies across {len(earnings)} days")
+print(f"  Got {total_companies} companies across {len(earnings)} days")
 
 # ── Past earnings calendar (Finnhub, cached in 90-day chunks) ────────────────
 PAST_CACHE_FILE = 'data/past_calendar_cache.json'
