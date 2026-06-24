@@ -1053,34 +1053,54 @@ function fetchCalendarPrices(){
 
 const _PROXY='https://corsproxy.io/?';
 
-// ── Yahoo Finance batch quote (all live price calls go here — no FMP rate limits) ──
-async function _yhBatchQuote(syms){
+// ── Yahoo Finance v8/chart price fetch (the only working CORS endpoint) ──────
+async function _chartPriceOne(sym){
+  const yhSym=sym==='BTC'?'BTC-USD':sym;
   try{
-    const url='https://query1.finance.yahoo.com/v7/finance/quote?symbols='+syms.join(',')+'&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent,postMarketPrice,postMarketChangePercent,preMarketPrice,preMarketChangePercent,marketState';
-    const r=await fetch(_PROXY+encodeURIComponent(url));
+    const r=await fetch(_PROXY+encodeURIComponent(
+      'https://query1.finance.yahoo.com/v8/finance/chart/'+yhSym+'?interval=5m&range=1d&includePrePost=true'
+    ));
     const d=await r.json();
-    const m={};(d?.quoteResponse?.result||[]).forEach(q=>{m[q.symbol]=q;});
-    return m;
-  }catch{return{};}
+    const res=d?.chart?.result?.[0];
+    const meta=res?.meta;
+    if(!meta||meta.regularMarketPrice==null)return null;
+    const timestamps=res?.timestamp||[];
+    const closes=res?.indicators?.quote?.[0]?.close||[];
+    const regEnd=meta.regularMarketTime;
+    const price=meta.regularMarketPrice;
+    const prev=meta.chartPreviousClose||meta.previousClose;
+    const chg=price&&prev?price-prev:null;
+    const pct=chg&&prev?(chg/prev*100):null;
+    // Post-market: last non-null close after market close time
+    let postPrice=null;
+    for(let i=timestamps.length-1;i>=0;i--){
+      if(timestamps[i]>regEnd&&closes[i]!=null){postPrice=closes[i];break;}
+    }
+    const postDiff=postPrice&&price?postPrice-price:null;
+    const postPct=postDiff&&price?(postDiff/price*100):null;
+    return{
+      price,chg,pct,
+      postPrice:(postDiff!=null&&Math.abs(postDiff)>0.01)?postPrice:null,
+      postPct:(postDiff!=null&&Math.abs(postDiff)>0.01)?postPct:null
+    };
+  }catch{return null;}
 }
 
-// Build extended hours HTML from a Yahoo quote object
-function _extHtml(yq){
-  if(!yq)return'';
-  const reg=yq.regularMarketPrice;
-  let ep=null,epct=null,lbl=null,moon=false;
-  if(yq.postMarketPrice&&reg&&Math.abs(yq.postMarketPrice-reg)>0.001){
-    ep=yq.postMarketPrice;epct=yq.postMarketChangePercent;lbl='AH';moon=true;
-  }else if(yq.preMarketPrice&&reg&&Math.abs(yq.preMarketPrice-reg)>0.001){
-    ep=yq.preMarketPrice;epct=yq.preMarketChangePercent;lbl='PM';
-  }
-  if(ep==null)return'';
-  const eu=epct>=0;
-  return'<br>'+
-    (moon?'<span style="font-size:9px">🌙</span> ':'')+
-    '<span style="font-size:9px;font-weight:700;color:'+(eu?'var(--green)':'var(--red)')+'">$'+ep.toFixed(2)+'</span>'+
-    ' <span style="font-size:8px;color:var(--faint)">'+lbl+'</span>'+
-    (epct!=null?'<span style="font-size:8px;color:'+(eu?'var(--green)':'var(--red)')+'"> '+(eu?'+':'')+epct.toFixed(2)+'%</span>':'');
+async function _chartPriceBatch(syms){
+  const entries=await Promise.allSettled(syms.map(s=>_chartPriceOne(s)));
+  const m={};
+  syms.forEach((s,i)=>{if(entries[i].status==='fulfilled'&&entries[i].value)m[s]=entries[i].value;});
+  return m;
+}
+
+// Build extended hours HTML
+function _extHtml(q){
+  if(!q||q.postPrice==null)return'';
+  const eu=q.postPct>=0;
+  return'<br><span style="font-size:9px">🌙</span> '+
+    '<span style="font-size:9px;font-weight:700;color:'+(eu?'var(--green)':'var(--red)')+'">$'+q.postPrice.toFixed(2)+'</span>'+
+    ' <span style="font-size:8px;color:var(--faint)">AH</span>'+
+    (q.postPct!=null?'<span style="font-size:8px;color:'+(eu?'var(--green)':'var(--red)')+'"> '+(eu?'+':'')+q.postPct.toFixed(2)+'%</span>':'');
 }
 
 // Live price strip for selected ticker
@@ -1088,36 +1108,14 @@ async function fetchLivePrice(sym){
   const el=document.getElementById('ecPriceStrip');
   if(!el)return;
   el.className='ec-price-loading';el.textContent='Loading price…';
-  const m=await _yhBatchQuote([sym]);
-  let yq=m[sym];
-  let price,chg,pct;
-  if(yq&&yq.regularMarketPrice!=null){
-    price=yq.regularMarketPrice;chg=yq.regularMarketChange;pct=yq.regularMarketChangePercent;
-  }else{
-    // Fallback: chart API
-    try{
-      const r=await fetch(_PROXY+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=1d'));
-      const d=await r.json();
-      const meta=d?.chart?.result?.[0]?.meta;
-      if(!meta){el.textContent='';return;}
-      price=meta.regularMarketPrice||meta.previousClose;
-      const prev=meta.previousClose||meta.chartPreviousClose;
-      chg=price&&prev?price-prev:null;pct=chg&&prev?(chg/prev*100):null;
-      yq=null;
-    }catch{el.textContent='';return;}
-  }
-  if(price==null){el.textContent='';return;}
+  const q=await _chartPriceOne(sym);
+  if(!q){el.textContent='';return;}
+  const{price,chg,pct,postPrice,postPct}=q;
   const up=chg==null||chg>=0;
   let extLine='';
-  if(yq){
-    const reg=yq.regularMarketPrice;
-    if(yq.postMarketPrice&&reg&&Math.abs(yq.postMarketPrice-reg)>0.001){
-      const ep=yq.postMarketPrice,epct=yq.postMarketChangePercent,eu=epct>=0;
-      extLine=`<span class="ec-price-chg ${eu?'up':'dn'}" style="font-size:11px;margin-left:8px">🌙 AH $${ep.toFixed(2)} ${eu?'+':''}${epct!=null?epct.toFixed(2)+'%':''}</span>`;
-    }else if(yq.preMarketPrice&&reg&&Math.abs(yq.preMarketPrice-reg)>0.001){
-      const ep=yq.preMarketPrice,epct=yq.preMarketChangePercent,eu=epct>=0;
-      extLine=`<span class="ec-price-chg ${eu?'up':'dn'}" style="font-size:11px;margin-left:8px">PM $${ep.toFixed(2)} ${eu?'+':''}${epct!=null?epct.toFixed(2)+'%':''}</span>`;
-    }
+  if(postPrice!=null){
+    const eu=postPct>=0;
+    extLine=`<span class="ec-price-chg ${eu?'up':'dn'}" style="font-size:11px;margin-left:8px">🌙 AH $${postPrice.toFixed(2)} ${eu?'+':''}${postPct!=null?postPct.toFixed(2)+'%':''}</span>`;
   }
   el.className='ec-price-strip';
   el.innerHTML=`<span class="ec-price-val">$${price.toFixed(2)}</span>`+
@@ -1126,11 +1124,9 @@ async function fetchLivePrice(sym){
 
 // Header index prices (SPY, QQQ, BTC)
 async function fetchETF(sym,pId,cId){
-  const yhSym=sym==='BTC'?'BTC-USD':sym;
-  const m=await _yhBatchQuote([yhSym]);
-  const yq=m[yhSym];if(!yq)return;
-  const price=yq.regularMarketPrice,chg=yq.regularMarketChange,pct=yq.regularMarketChangePercent;
-  if(price==null)return;
+  const q=await _chartPriceOne(sym);
+  if(!q)return;
+  const{price,chg,pct}=q;
   const up=chg>=0;
   const fmt=sym==='BTC'?(price>1000?'$'+Math.round(price).toLocaleString():'$'+price.toFixed(2)):'$'+price.toFixed(2);
   document.getElementById(pId).textContent=fmt||'—';
@@ -1139,19 +1135,19 @@ async function fetchETF(sym,pId,cId){
   el.className='price-chg '+(up?'up':'dn');
 }
 
-// Live calendar tile prices — all via Yahoo Finance (single batch call)
+// Live calendar tile prices — parallel v8/chart calls
 async function fetchLiveCalendarPrices(){
   const els=[...document.querySelectorAll('[id^="lp-"]')];
   if(!els.length)return;
   const syms=[...new Set(els.map(e=>e.id.slice(3)))];
-  const m=await _yhBatchQuote(syms);
+  const m=await _chartPriceBatch(syms);
   els.forEach(el=>{
-    const sym=el.id.slice(3),yq=m[sym];
-    if(!yq||yq.regularMarketPrice==null)return;
-    const price=yq.regularMarketPrice,chg=yq.regularMarketChange,pct=yq.regularMarketChangePercent;
+    const sym=el.id.slice(3),q=m[sym];
+    if(!q)return;
+    const{price,chg,pct}=q;
     const up=chg>=0;
     const closeLine='$'+price.toFixed(2)+(pct!=null?' <span style="font-size:8px;color:'+(up?'var(--green)':'var(--red)')+'">'+(up?'+':'')+pct.toFixed(2)+'%</span>':'');
-    const ext=_extHtml(yq);
+    const ext=_extHtml(q);
     el.innerHTML=closeLine+ext;
     el.style.color=ext?'var(--text)':(up?'var(--green)':'var(--red)');
   });
