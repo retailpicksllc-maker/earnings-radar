@@ -50,7 +50,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .day-hd.today-hd{color:var(--accent2)}
 .day-num{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
 .today-num{background:var(--accent);color:#fff}
-.sec-hd{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);margin-top:4px;display:flex;align-items:center;gap:3px}
+.sec-hd{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--accent2);margin-top:6px;padding:2px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:3px}
 .logos-wrap{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
 .logo-card{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:4px;border-radius:6px;transition:background .1s}
 .logo-card:hover{background:var(--surface2)}
@@ -380,7 +380,7 @@ function renderWeek(){
       const unk=rows.filter(r=>r.time!=='time-pre-market'&&r.time!=='time-after-hours');
       if(pre.length)col.appendChild(makeSection('&#9728; Before Open',pre));
       if(aft.length)col.appendChild(makeSection('&#9790; After Hours',aft));
-      if(unk.length&&!pre.length&&!aft.length)col.appendChild(makeSection('&#9679; Unconfirmed',unk));
+      if(unk.length)col.appendChild(makeSection('&#9679; Unconfirmed',unk));
     }
     grid.appendChild(col);
   });
