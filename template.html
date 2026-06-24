@@ -1119,7 +1119,8 @@ async function fetchLivePrice(sym){
   }
   el.className='ec-price-strip';
   el.innerHTML=`<span class="ec-price-val">$${price.toFixed(2)}</span>`+
-    (pct!=null?`<span class="ec-price-chg ${up?'up':'dn'}">${up?'+':''}${(chg||0).toFixed(2)} (${up?'+':''}${pct.toFixed(2)}%)</span>`:'')+extLine;
+    (pct!=null?`<span class="ec-price-chg ${up?'up':'dn'}">${up?'+':''}${(chg||0).toFixed(2)} (${up?'+':''}${pct.toFixed(2)}%)</span>`:'')+extLine+
+    `<span style="font-size:9px;font-weight:700;color:var(--green);margin-left:6px;opacity:0.85">● LIVE</span>`;
 }
 
 // Header index prices (SPY, QQQ, BTC)
