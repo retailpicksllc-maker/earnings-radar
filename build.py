@@ -57,59 +57,77 @@ def fetch_finnhub_range(from_d, to_d):
 today = datetime.now(timezone.utc)
 today_str = today.strftime('%Y-%m-%d')
 
-# Fetch upcoming 40 trading days in one call
+# ── Upcoming earnings: NASDAQ API (per-day, next 14 trading days) ────────────
+def fetch_nasdaq_day(date_str):
+    url = f'https://api.nasdaq.com/api/calendar/earnings?date={date_str}'
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read())
+        rows = (data.get('data') or {}).get('rows') or []
+        out = []
+        for row in rows:
+            sym = row.get('symbol', '').strip()
+            if not sym:
+                continue
+            out.append({
+                'symbol': sym,
+                'time': row.get('time', 'time-not-supplied'),
+                'fiscalQuarterEnding': row.get('fiscalQuarterEnding', ''),
+                'eps': row.get('epsForecast'),
+                'epsActual': None,
+                'revenueEstimate': None,
+                'revenueActual': None,
+                'marketCap': row.get('marketCap', ''),
+                'name': row.get('name', sym),
+            })
+        return out
+    except Exception as e:
+        print(f"  ERR NASDAQ {date_str}: {e}")
+        return []
+
+# Build list of next 14 trading days
 td_list = []
 d = today
-while len(td_list) < 40:
+while len(td_list) < 14:
     if d.weekday() < 5:
         td_list.append(d.strftime('%Y-%m-%d'))
     d += timedelta(days=1)
-from_upcoming = td_list[0]
-to_upcoming = td_list[-1]
 
-print(f"Fetching upcoming earnings from Finnhub ({from_upcoming} to {to_upcoming})...")
-all_upcoming = fetch_finnhub_range(from_upcoming, to_upcoming)
+print(f"Fetching upcoming earnings from NASDAQ ({td_list[0]} to {td_list[-1]})...")
 earnings = {}
-for row in all_upcoming:
-    if row['time'] in ('time-pre-market', 'time-after-hours'):
-        date_key = None
-        # find matching date by re-querying per day isn't needed; finnhub rows have 'date' field
-        pass
+with ThreadPoolExecutor(max_workers=5) as ex:
+    results = list(ex.map(fetch_nasdaq_day, td_list))
+for date_str, rows in zip(td_list, results):
+    if rows:
+        earnings[date_str] = rows
 
-# Finnhub rows have a 'date' field — re-do mapping to keep it
-def map_finnhub_row(r):
-    hour = r.get('hour', '')
-    time_val = 'time-pre-market' if hour == 'bmo' else ('time-after-hours' if hour == 'amc' else 'time-not-supplied')
-    q, yr = r.get('quarter', ''), r.get('year', '')
-    fqe = f'Q{q}/{str(yr)[2:]}' if q and yr else ''
-    return {
-        'symbol': r.get('symbol', ''),
-        'time': time_val,
-        'fiscalQuarterEnding': fqe,
-        'eps': r.get('epsEstimate'),
-        'epsActual': r.get('epsActual'),
-        'revenueEstimate': r.get('revenueEstimate'),
-        'revenueActual': r.get('revenueActual'),
-        'marketCap': '',
-        'name': r.get('symbol', ''),
-        'date': r.get('date', ''),
-    }
-
-def fetch_finnhub_range(from_d, to_d):
+# Fill in further-out dates (Aug+) from Finnhub where NASDAQ is sparse
+far_td_list = []
+d2 = today + timedelta(days=14)
+while len(far_td_list) < 26:
+    if d2.weekday() < 5:
+        far_td_list.append(d2.strftime('%Y-%m-%d'))
+    d2 += timedelta(days=1)
+if far_td_list:
     try:
-        data = finnhub_get(f'/calendar/earnings?from={from_d}&to={to_d}')
-        rows = data.get('earningsCalendar', [])
-        return [map_finnhub_row(r) for r in rows if r.get('symbol')]
+        fh_data = finnhub_get(f'/calendar/earnings?from={far_td_list[0]}&to={far_td_list[-1]}')
+        for r in fh_data.get('earningsCalendar', []):
+            sym = r.get('symbol', '')
+            dt = r.get('date', '')
+            if not sym or not dt:
+                continue
+            hour = r.get('hour', '')
+            time_val = 'time-pre-market' if hour == 'bmo' else ('time-after-hours' if hour == 'amc' else 'time-not-supplied')
+            earnings.setdefault(dt, []).append({
+                'symbol': sym, 'time': time_val,
+                'fiscalQuarterEnding': f"Q{r.get('quarter','')}/{str(r.get('year',''))[2:]}",
+                'eps': r.get('epsEstimate'), 'epsActual': None,
+                'revenueEstimate': None, 'revenueActual': None,
+                'marketCap': '', 'name': sym,
+            })
     except Exception as e:
-        print(f"  ERR Finnhub earnings {from_d}-{to_d}: {e}")
-        return []
-
-all_upcoming = fetch_finnhub_range(from_upcoming, to_upcoming)
-earnings = {}
-for row in all_upcoming:
-    dt = row.get('date', '')
-    if dt:
-        earnings.setdefault(dt, []).append(row)
+        print(f"  ERR Finnhub far-out: {e}")
 
 total_companies = sum(len(v) for v in earnings.values())
 print(f"  Got {total_companies} companies across {len(earnings)} days")
