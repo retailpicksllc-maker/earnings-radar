@@ -395,7 +395,7 @@ function makeSection(label,rows){
   show.forEach(r=>{
     const card=document.createElement('div');
     card.className='logo-card'+(selSym===r.symbol?' sel':'');
-    const _qtr=r.fiscalQuarterEnding?qLbl((r.fiscalQuarterEnding||'').replace('/',' ')):'';card.innerHTML=logoHtml(r.symbol,62)+'<span class="logo-sym">'+esc(r.symbol)+'</span>'+(_qtr?'<span class="logo-qtr">'+_qtr+'</span>':'')+'<span class="logo-price" id="lp-'+r.symbol+'">—</span>';
+    const _qtr=r.fiscalQuarterEnding?qLbl((r.fiscalQuarterEnding||'').replace('/',' ')):'';card.innerHTML=logoHtml(r.symbol,62)+'<span class="logo-sym">'+esc(r.symbol)+'</span>'+(_qtr?'<span class="logo-qtr">'+_qtr+'</span>':'');
     card.onclick=()=>openStock(r.symbol);
     wrap.appendChild(card);
   });
