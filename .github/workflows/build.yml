@@ -42,6 +42,7 @@ jobs:
       - name: Build HTML
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
         run: python build.py
 
       - name: Commit and push
