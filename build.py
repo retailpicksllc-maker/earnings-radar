@@ -354,9 +354,8 @@ def _load_fx():
 _FX = _load_fx()
 
 def _finnhub_revenue(ticker):
-    """Fetch quarterly actual revenue from Finnhub. Returns {Mon YYYY: $M}."""
-    if not FINNHUB_KEY:
-        return {}
+    """Revenue financials require Finnhub paid tier."""
+    return {}
     try:
         data = finnhub_get(f'/stock/financials?symbol={ticker}&statement=income&freq=quarterly')
         qtrs = (data.get('financials') or {}).get('quarterly') or []
@@ -456,68 +455,19 @@ def _sec_annual_fallback(ticker):
 
 
 def _finnhub_rev_estimate_monthly(ticker):
-    """Fetch quarterly revenue estimates from Finnhub. Returns {'Mon YYYY': $M}."""
-    if not FINNHUB_KEY:
-        return {}
-    try:
-        data = finnhub_get(f'/stock/revenue-estimate?symbol={ticker}&freq=quarterly')
-        result = {}
-        for q in (data.get('data') or []):
-            period = q.get('period', '')
-            rev_avg = q.get('revenueAvg')
-            if period and rev_avg and rev_avg > 0:
-                val_m = round(float(rev_avg) / 1e6, 1)
-                if 0.1 < val_m < 2e6:
-                    try:
-                        key = datetime.strptime(period[:7], '%Y-%m').strftime('%b %Y')
-                        result[key] = val_m
-                    except: pass
-        return result
-    except:
-        return {}
+    """Revenue estimates require Finnhub paid tier."""
+    return {}
 
 def _finnhub_eps_estimate(ticker):
-    """Fetch quarterly EPS estimates from Finnhub. Returns {'Mon YYYY': $}."""
-    if not FINNHUB_KEY:
-        return {}
-    try:
-        data = finnhub_get(f'/stock/eps-estimate?symbol={ticker}&freq=quarterly')
-        result = {}
-        for q in (data.get('data') or []):
-            period = q.get('period', '')
-            eps_avg = q.get('epsAvg')
-            if period and eps_avg is not None:
-                val_f = round(float(eps_avg), 4)
-                if -1000 < val_f < 10000:
-                    try:
-                        key = datetime.strptime(period[:7], '%Y-%m').strftime('%b %Y')
-                        result[key] = val_f
-                    except: pass
-        return result
-    except:
-        return {}
+    """EPS estimates require Finnhub paid tier."""
+    return {}
 
 def _finnhub_rev_estimate(ticker):
-    """Fetch quarterly revenue estimates from Finnhub keyed by fiscal period ISO date.
-    Returns {'YYYY-MM-DD': $M} for matching against fiscalQtrEnd."""
-    if not FINNHUB_KEY:
-        return {}
-    try:
-        data = finnhub_get(f'/stock/revenue-estimate?symbol={ticker}&freq=quarterly')
-        result = {}
-        for q in (data.get('data') or []):
-            period = q.get('period', '')
-            rev_avg = q.get('revenueAvg')
-            if period and rev_avg and rev_avg > 0:
-                result[period] = round(float(rev_avg) / 1e6, 1)
-        return result
-    except:
-        return {}
+    """Revenue estimates require Finnhub paid tier."""
+    return {}
 
 def _fetch_one(ticker):
-    qtrs = _finnhub_revenue(ticker)
-    if not qtrs:
-        qtrs = _sec_annual_fallback(ticker)
+    qtrs = _sec_annual_fallback(ticker)
     return ticker, qtrs
 
 rev_est_data = dict(rev_est_cache)
