@@ -1041,7 +1041,7 @@ function fetchCalendarPrices(){
       const up=d.ext_pct==null||d.ext_pct>=0;
       el.innerHTML=closeLine+
         '<br><span style="font-size:9px;font-weight:700;color:'+(up?'var(--green)':'var(--red)')+'">$'+d.ext.toFixed(2)+'</span>'+
-        ' <span style="font-size:8px;color:var(--faint)">'+(d.ext_lbl||'EXT')+'</span>'+
+        ' <span style="font-size:8px;color:var(--faint)">After Hours</span>'+
         (d.ext_pct!=null?'<span style="font-size:8px;color:'+(up?'var(--green)':'var(--red)')+'"> '+(up?'+':'')+d.ext_pct.toFixed(2)+'%</span>':'');
       el.style.color='var(--text)';
     } else {

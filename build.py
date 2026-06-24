@@ -692,13 +692,13 @@ try:
             try:
                 pp = fi.post_market_price
                 if pp and abs(float(pp) - float(p)) > 0.001:
-                    ext_p = float(pp); ext_lbl = 'AH'
+                    ext_p = float(pp); ext_lbl = 'After Hours'
             except: pass
             if ext_p is None:
                 try:
                     prp = fi.pre_market_price
                     if prp and abs(float(prp) - float(p)) > 0.001:
-                        ext_p = float(prp); ext_lbl = 'PM'
+                        ext_p = float(prp); ext_lbl = 'Pre-Market'
                 except: pass
             ext_pct = round((ext_p - p) / p * 100, 2) if ext_p and p else None
             return sym, {
