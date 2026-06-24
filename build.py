@@ -305,9 +305,7 @@ with open(CACHE_FILE, 'w') as f:
     json.dump(history, f)
 print(f"  Cache saved: {len(history)} tickers")
 
-# ── Revenue actuals via yfinance ─────────────────────────────────────────────
-import yfinance as yf
-
+# ── Revenue actuals (Finnhub) ─────────────────────────────────────────────────
 REV_CACHE_FILE = 'data/revenue_cache.json'
 REV_EST_CACHE_FILE = 'data/rev_est_cache.json'
 EPS_EST_CACHE_FILE = 'data/eps_est_cache.json'
@@ -355,47 +353,29 @@ def _load_fx():
 
 _FX = _load_fx()
 
-def _yf_revenue(ticker):
-    """Fetch quarterly revenue via yfinance. Returns {Mon YYYY: $M USD}."""
+def _finnhub_revenue(ticker):
+    """Fetch quarterly actual revenue from Finnhub. Returns {Mon YYYY: $M}."""
+    if not FINNHUB_KEY:
+        return {}
     try:
-        t = yf.Ticker(ticker)
-        stmt = t.quarterly_income_stmt
-        if stmt is None or stmt.empty:
-            return {}
-        rev_row = None
-        for label in ['Total Revenue', 'Revenue', 'Net Revenue', 'Gross Profit']:
-            if label in stmt.index:
-                rev_row = stmt.loc[label]
-                break
-        if rev_row is None:
-            return {}
-        # FX conversion using financialCurrency
-        try:
-            fc = (t.fast_info.get('currency') or
-                  t.info.get('financialCurrency') or 'USD')
-        except:
-            fc = 'USD'
-        # fast_info.currency is the trading currency (always USD for ADRs)
-        # We need financialCurrency for the actual reporting currency
-        try:
-            fc2 = t.info.get('financialCurrency', fc)
-            if fc2: fc = fc2
-        except:
-            pass
-        fx = _FX.get(fc, 1.0) if fc != 'USD' else 1.0
+        data = finnhub_get(f'/stock/financials?symbol={ticker}&statement=income&freq=quarterly')
+        qtrs = (data.get('financials') or {}).get('quarterly') or []
         result = {}
-        for dt, val in rev_row.dropna().items():
-            if not val or val <= 0: continue
-            val_usd = val / fx / 1e6
-            if val_usd < 1 or val_usd > 2e6: continue
-            try:
-                key = dt.strftime('%b %Y') if hasattr(dt, 'strftime') else (
-                    datetime.strptime(str(dt)[:7], '%Y-%m').strftime('%b %Y'))
-                result[key] = round(val_usd, 1)
-            except:
+        for q in qtrs:
+            date = q.get('date', '')
+            rev = q.get('revenue') or q.get('totalRevenue')
+            if not date or not rev or rev <= 0:
                 continue
+            val_m = round(float(rev) / 1e6, 1)
+            if not (0.1 < val_m < 2e6):
+                continue
+            try:
+                key = datetime.strptime(date[:7], '%Y-%m').strftime('%b %Y')
+                result[key] = val_m
+            except:
+                pass
         return result
-    except Exception as e:
+    except:
         return {}
 
 def rev_is_stale(ticker):
@@ -416,7 +396,7 @@ def rev_is_stale(ticker):
 
 all_rev_tickers = list(set(rev_tickers) | set(history.keys()))
 tickers_needing_rev = [t for t in all_rev_tickers if rev_is_stale(t)]
-print(f"Fetching revenue for {len(tickers_needing_rev)} tickers via yfinance...")
+print(f"Fetching revenue for {len(tickers_needing_rev)} tickers via Finnhub...")
 revenue_data = dict(revenue_cache)
 
 # SEC EDGAR CIK map (used as fallback for annual-only filers)
@@ -475,97 +455,67 @@ def _sec_annual_fallback(ticker):
     except: return {}
 
 
-def _yf_rev_estimate(ticker):
-    """Fetch quarterly revenue estimate via yfinance. Returns {'Mon YYYY': $M} or {'0q': $M}."""
-    try:
-        t = yf.Ticker(ticker)
-        re_df = t.revenue_estimate
-        if re_df is None or re_df.empty: return {}
-        # Skip t.info (slow) — assume USD; FX adjustment minor for estimates
-        result = {}
-        # Map 0q -> real quarter date via earnings_dates (fix timezone)
-        try:
-            ed = t.earnings_dates
-            if ed is not None and not ed.empty:
-                from datetime import timezone
-                now_tz = datetime.now(timezone.utc)
-                upcoming = ed[ed.index > now_tz].sort_index()
-                if not upcoming.empty:
-                    for period, idx_key in [('0q', 0), ('+1q', 1)]:
-                        if period in re_df.index and 'avg' in re_df.columns and idx_key < len(upcoming):
-                            val = re_df.loc[period, 'avg']
-                            if val and val > 0:
-                                val_m = round(float(val) / 1e6, 1)
-                                if 0.1 < val_m < 2e6:
-                                    qkey = upcoming.index[idx_key].strftime('%b %Y')
-                                    result[qkey] = val_m
-        except: pass
-        # Fallback: store with generic period keys
-        if not result:
-            for idx_key in ['0q', '+1q']:
-                if idx_key in re_df.index and 'avg' in re_df.columns:
-                    val = re_df.loc[idx_key, 'avg']
-                    if val and val > 0:
-                        val_m = round(float(val) / 1e6, 1)
-                        if 0.1 < val_m < 2e6:
-                            result[idx_key] = val_m
-        return result
-    except: return {}
-
-
-def _yf_eps_estimate(ticker):
-    """Fetch quarterly EPS estimate via yfinance. Returns {'Mon YYYY': $} or {'0q': $}."""
-    try:
-        t = yf.Ticker(ticker)
-        ee_df = t.earnings_estimate
-        if ee_df is None or ee_df.empty: return {}
-        result = {}
-        try:
-            ed = t.earnings_dates
-            if ed is not None and not ed.empty:
-                from datetime import timezone
-                now_tz = datetime.now(timezone.utc)
-                upcoming = ed[ed.index > now_tz].sort_index()
-                if not upcoming.empty:
-                    for period, idx_key in [('0q', 0), ('+1q', 1)]:
-                        if period in ee_df.index and 'avg' in ee_df.columns and idx_key < len(upcoming):
-                            val = ee_df.loc[period, 'avg']
-                            if val and not (isinstance(val, float) and (val != val)):
-                                val_f = round(float(val), 4)
-                                if -1000 < val_f < 10000:
-                                    qkey = upcoming.index[idx_key].strftime('%b %Y')
-                                    result[qkey] = val_f
-        except: pass
-        if not result:
-            for idx_key in ['0q', '+1q']:
-                if idx_key in ee_df.index and 'avg' in ee_df.columns:
-                    val = ee_df.loc[idx_key, 'avg']
-                    if val and not (isinstance(val, float) and (val != val)):
-                        val_f = round(float(val), 4)
-                        if -1000 < val_f < 10000:
-                            result[idx_key] = val_f
-        return result
-    except: return {}
-
-def _finnhub_rev_estimate(ticker):
-    """Fetch quarterly revenue estimates from Finnhub.
-    Returns {ISO_report_date: rev_est_in_millions}."""
+def _finnhub_rev_estimate_monthly(ticker):
+    """Fetch quarterly revenue estimates from Finnhub. Returns {'Mon YYYY': $M}."""
     if not FINNHUB_KEY:
         return {}
     try:
         data = finnhub_get(f'/stock/revenue-estimate?symbol={ticker}&freq=quarterly')
         result = {}
         for q in (data.get('data') or []):
-            date = q.get('period', '')
-            rev_est = q.get('revenueAvg')
-            if date and rev_est and rev_est > 0:
-                result[date] = round(float(rev_est) / 1e6, 1)
+            period = q.get('period', '')
+            rev_avg = q.get('revenueAvg')
+            if period and rev_avg and rev_avg > 0:
+                val_m = round(float(rev_avg) / 1e6, 1)
+                if 0.1 < val_m < 2e6:
+                    try:
+                        key = datetime.strptime(period[:7], '%Y-%m').strftime('%b %Y')
+                        result[key] = val_m
+                    except: pass
+        return result
+    except:
+        return {}
+
+def _finnhub_eps_estimate(ticker):
+    """Fetch quarterly EPS estimates from Finnhub. Returns {'Mon YYYY': $}."""
+    if not FINNHUB_KEY:
+        return {}
+    try:
+        data = finnhub_get(f'/stock/eps-estimate?symbol={ticker}&freq=quarterly')
+        result = {}
+        for q in (data.get('data') or []):
+            period = q.get('period', '')
+            eps_avg = q.get('epsAvg')
+            if period and eps_avg is not None:
+                val_f = round(float(eps_avg), 4)
+                if -1000 < val_f < 10000:
+                    try:
+                        key = datetime.strptime(period[:7], '%Y-%m').strftime('%b %Y')
+                        result[key] = val_f
+                    except: pass
+        return result
+    except:
+        return {}
+
+def _finnhub_rev_estimate(ticker):
+    """Fetch quarterly revenue estimates from Finnhub keyed by fiscal period ISO date.
+    Returns {'YYYY-MM-DD': $M} for matching against fiscalQtrEnd."""
+    if not FINNHUB_KEY:
+        return {}
+    try:
+        data = finnhub_get(f'/stock/revenue-estimate?symbol={ticker}&freq=quarterly')
+        result = {}
+        for q in (data.get('data') or []):
+            period = q.get('period', '')
+            rev_avg = q.get('revenueAvg')
+            if period and rev_avg and rev_avg > 0:
+                result[period] = round(float(rev_avg) / 1e6, 1)
         return result
     except:
         return {}
 
 def _fetch_one(ticker):
-    qtrs = _yf_revenue(ticker)
+    qtrs = _finnhub_revenue(ticker)
     if not qtrs:
         qtrs = _sec_annual_fallback(ticker)
     return ticker, qtrs
@@ -583,7 +533,7 @@ upcoming_syms = set(r.get('symbol','') for rows in earnings.values() for r in ro
 est_tickers = [t for t in rev_tickers if t not in rev_est_data or (t in upcoming_syms and not rev_est_data.get(t))]
 print(f"Fetching revenue estimates for {len(est_tickers)} tickers...")
 with ThreadPoolExecutor(max_workers=8) as ex:
-    for ticker, est in ex.map(lambda t: (t, _yf_rev_estimate(t)), est_tickers, timeout=300):
+    for ticker, est in ex.map(lambda t: (t, _finnhub_rev_estimate_monthly(t)), est_tickers, timeout=300):
         if est:
             rev_est_data[ticker] = est
 print(f"  Revenue estimates collected: {len(rev_est_data)} tickers")
@@ -593,7 +543,7 @@ eps_est_data = dict(eps_est_cache)
 eps_est_fetch = [t for t in rev_tickers if t not in eps_est_data or (t in upcoming_syms and not eps_est_data.get(t))]
 print(f"Fetching EPS estimates for {len(eps_est_fetch)} tickers...")
 with ThreadPoolExecutor(max_workers=8) as ex:
-    for ticker, est in ex.map(lambda t: (t, _yf_eps_estimate(t)), eps_est_fetch, timeout=300):
+    for ticker, est in ex.map(lambda t: (t, _finnhub_eps_estimate(t)), eps_est_fetch, timeout=300):
         if est:
             eps_est_data[ticker] = est
 print(f"  EPS estimates collected: {len(eps_est_data)} tickers")
@@ -643,14 +593,22 @@ for ticker, quarters in history.items():
     fmp = fmp_est_data.get(ticker, {})
     for q in quarters:
         q['revActual'] = _nearest_rev(rev, q.get('fiscalQtrEnd', ''))
-        # Match FMP estimate via dateReported "3/19/2026" -> "2026-03-19"
+        # Match Finnhub rev estimate via fiscalQtrEnd "Jan 2026" -> nearest YYYY-MM-DD period
         q['revEstimate'] = None
-        dr = q.get('dateReported', '')
-        if dr and fmp:
+        fqe = q.get('fiscalQtrEnd', '')
+        if fqe and fmp:
             try:
-                iso = datetime.strptime(dr, '%m/%d/%Y').strftime('%Y-%m-%d')
-                if iso in fmp:
-                    q['revEstimate'] = fmp[iso]
+                fqe_dt = datetime.strptime(fqe, '%b %Y')
+                best_val, best_diff = None, 999
+                for period_iso, val in fmp.items():
+                    try:
+                        p_dt = datetime.strptime(period_iso[:7], '%Y-%m')
+                        diff = abs((p_dt.year - fqe_dt.year) * 12 + (p_dt.month - fqe_dt.month))
+                        if diff <= 2 and diff < best_diff:
+                            best_diff, best_val = diff, val
+                    except: pass
+                if best_val is not None:
+                    q['revEstimate'] = best_val
             except:
                 pass
 
@@ -737,62 +695,7 @@ for date_str, rows in earnings.items():
             }
 
 
-# ── 4b. Fetch prices for all calendar tickers ────────────────────────────────
-# Priority tickers: current week calendar (must always have prices)
-priority_syms = sorted({r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')} | {'SPY','QQQ'})
-# Secondary: historical tickers from past earnings
-secondary_syms = sorted({r.get('symbol','') for rows in past_earnings.values() for r in rows if r.get('symbol')} - set(priority_syms))
-price_syms = [s for s in priority_syms + secondary_syms if s]
-prices = {}
-print(f"  Fetching prices: {len(priority_syms)} priority + {len(secondary_syms)} secondary = {len(price_syms)} total…")
-try:
-    import yfinance as yf
-    from concurrent.futures import ThreadPoolExecutor as _TPE
-
-    # fast_info for all tickers — uses quoteSummary (no crumb), includes post/pre market
-    def _get_price_fast(sym):
-        try:
-            fi = yf.Ticker(sym).fast_info
-            p    = fi.last_price
-            prev = fi.previous_close
-            if p is None: return sym, None
-            pct  = round((p - prev) / prev * 100, 2) if prev else None
-            ext_p = None; ext_lbl = None
-            try:
-                pp = fi.post_market_price
-                if pp and abs(float(pp) - float(p)) > 0.001:
-                    ext_p = float(pp); ext_lbl = 'After Hours'
-            except: pass
-            if ext_p is None:
-                try:
-                    prp = fi.pre_market_price
-                    if prp and abs(float(prp) - float(p)) > 0.001:
-                        ext_p = float(prp); ext_lbl = 'Pre-Market'
-                except: pass
-            ext_pct = round((ext_p - p) / p * 100, 2) if ext_p and p else None
-            return sym, {
-                'p': round(float(p), 2), 'pct': pct,
-                'ext': round(ext_p, 2) if ext_p else None,
-                'ext_pct': ext_pct, 'ext_lbl': ext_lbl
-            }
-        except: return sym, None
-
-    # Fetch priority tickers first with short timeout (guaranteed)
-    with _TPE(max_workers=20) as ex:
-        for sym, data in ex.map(_get_price_fast, priority_syms, timeout=90):
-            if data: prices[sym] = data
-    print(f"  Priority prices: {len(prices)}/{len(priority_syms)}")
-    # Then fetch secondary tickers (best-effort)
-    try:
-        with _TPE(max_workers=20) as ex:
-            for sym, data in ex.map(_get_price_fast, secondary_syms, timeout=120):
-                if data: prices[sym] = data
-    except Exception as e2:
-        print(f"  Secondary prices partial ({len(prices)} total): {e2}")
-    print(f"  Got prices for {len(prices)} tickers total")
-
-except Exception as e:
-    print(f"  Price fetch failed: {e}")
+prices = {}  # prices removed from page
 
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
@@ -809,7 +712,6 @@ output = (template
     .replace('__EPS_EST_JS__', json.dumps(eps_est_data,  ensure_ascii=False))
     .replace('__NEWS_JS__',     json.dumps(news,       ensure_ascii=False))
     .replace('__META_JS__',     json.dumps(stock_meta, ensure_ascii=False))
-    .replace('__PRICES_JS__',   json.dumps(prices,      ensure_ascii=False))
     .replace('__BUILT_AT__',    json.dumps(built_at)))
 
 with open('docs/index.html', 'w') as f:

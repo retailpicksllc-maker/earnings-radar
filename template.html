@@ -289,7 +289,6 @@ const REV_EST=__REV_EST_JS__;
 const EPS_EST=__EPS_EST_JS__;
 const NEWS=__NEWS_JS__;
 const META=__META_JS__;
-const PRICES=__PRICES_JS__;
 const BUILT_AT=__BUILT_AT__;
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -1023,7 +1022,6 @@ async function fetchPriceChart(sym,range){
   }catch(e){const meta=document.getElementById('priceMeta');if(meta)meta.textContent='Chart unavailable';}
 }
 
-// Populate calendar tile prices from build-time PRICES data
 
 
 
