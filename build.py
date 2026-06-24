@@ -92,7 +92,8 @@ if dates_to_fetch:
     days_with_data = sum(1 for v in past_calendar_cached.values() if v)
     print(f"  Past cache saved: {days_with_data} days with earnings data")
 
-past_earnings = {d: rows for d, rows in past_calendar_cached.items() if rows}
+past_earnings_raw = {d: [r for r in rows if r.get("time") in ("time-pre-market", "time-after-hours")] for d, rows in past_calendar_cached.items()}
+past_earnings = {d: rows for d, rows in past_earnings_raw.items() if rows}
 print(f"  Past earnings: {len(past_earnings)} days with data")
 
 # ── 2. Earnings history ───────────────────────────────────────────────────────
