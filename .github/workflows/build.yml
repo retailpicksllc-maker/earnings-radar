@@ -53,7 +53,7 @@ jobs:
 
       - name: Trigger next build in 60s
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           sleep 60
           curl -s -X POST \
