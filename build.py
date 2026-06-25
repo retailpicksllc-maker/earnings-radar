@@ -161,6 +161,12 @@ for fr, to in ranges:
     if cache_key not in past_calendar_cached.get('_chunks', {}) or (fr, to) == recent_range:
         ranges_to_fetch.append((fr, to))
 
+# Always re-fetch today and yesterday individually for fresh epsActual
+hot_dates = []
+for offset in [0, 1]:
+    d = (today - timedelta(days=offset)).strftime('%Y-%m-%d')
+    hot_dates.append(d)
+
 print(f"Fetching {len(ranges_to_fetch)} past date ranges from Finnhub...")
 chunks_done = past_calendar_cached.get('_chunks', {})
 for fr, to in ranges_to_fetch:
@@ -171,11 +177,23 @@ for fr, to in ranges_to_fetch:
         dt = row.get('date', '')
         if dt:
             past_calendar_cached.setdefault(dt, [])
-            # Upsert by symbol
-            existing_syms = {r['symbol'] for r in past_calendar_cached[dt]}
-            if row['symbol'] not in existing_syms:
-                past_calendar_cached[dt].append(row)
+            # Upsert by symbol — always update so epsActual/revenueActual refresh
+            existing = [r for r in past_calendar_cached[dt] if r['symbol'] != row['symbol']]
+            existing.append(row)
+            past_calendar_cached[dt] = existing
     chunks_done[f'{fr}_{to}'] = True
+
+# Fetch today/yesterday individually — always fresh, no cache skip
+for hot_d in hot_dates:
+    rows = fetch_finnhub_range(hot_d, hot_d)
+    # Include all tickers (confirmed or not) for hot dates — they've already reported
+    for row in rows:
+        dt = row.get('date', hot_d)
+        if dt and row.get('symbol'):
+            past_calendar_cached.setdefault(dt, [])
+            existing = [r for r in past_calendar_cached[dt] if r['symbol'] != row['symbol']]
+            existing.append(row)
+            past_calendar_cached[dt] = existing
 
 past_calendar_cached['_chunks'] = chunks_done
 os.makedirs('data', exist_ok=True)
