@@ -809,7 +809,7 @@ def fetch_price(sym):
     try:
         url = f'https://finnhub.io/api/v1/quote?symbol={sym}&token={FINNHUB_KEY}'
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=5) as r:
+        with urllib.request.urlopen(req, timeout=3) as r:
             d = json.loads(r.read())
         if d and d.get('c'):
             return sym, {'c': round(d['c'], 2), 'dp': round(d.get('dp', 0), 2), 'pc': round(d.get('pc', 0), 2)}
@@ -818,10 +818,20 @@ def fetch_price(sym):
 
 if FINNHUB_KEY and price_syms:
     print(f"Fetching live prices for {len(price_syms)} tickers...")
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        for sym, p in ex.map(fetch_price, price_syms[:150], timeout=60):
-            if p:
-                price_data[sym] = p
+    try:
+        import time as _time
+        from concurrent.futures import as_completed
+        with ThreadPoolExecutor(max_workers=15) as ex:
+            futures = {ex.submit(fetch_price, sym): sym for sym in price_syms[:100]}
+            _deadline = _time.time() + 45
+            for fut in as_completed(futures, timeout=45):
+                if _time.time() > _deadline: break
+                try:
+                    sym, p = fut.result()
+                    if p: price_data[sym] = p
+                except: pass
+    except Exception as e:
+        print(f"  WARN price fetch: {e}")
     print(f"  Got prices for {len(price_data)} tickers")
 
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
