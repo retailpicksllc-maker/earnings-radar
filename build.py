@@ -501,17 +501,53 @@ def _sec_annual_fallback(ticker):
     except: return {}
 
 
+def _fmp_estimates(ticker):
+    """Fetch EPS + revenue estimates from FMP /v3/analyst-estimates."""
+    if not FMP_API_KEY:
+        return {}, {}
+    try:
+        url = f'https://financialmodelingprep.com/api/v3/analyst-estimates/{ticker}?period=quarter&limit=8&apikey={FMP_API_KEY}'
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            rows = json.loads(r.read())
+        if not rows or not isinstance(rows, list):
+            return {}, {}
+        eps_out = {}
+        rev_out = {}
+        for row in rows:
+            date = row.get('date', '')  # e.g. "2025-03-31"
+            if not date:
+                continue
+            # FMP uses full ISO date; convert to "Mar 2025" style key
+            try:
+                from datetime import datetime as _dt
+                d = _dt.strptime(date, '%Y-%m-%d')
+                qk = d.strftime('%b %Y')
+            except:
+                qk = date
+            eps = row.get('estimatedEpsAvg')
+            rev = row.get('estimatedRevenueAvg')
+            if eps is not None:
+                try: eps_out[qk] = float(eps)
+                except: pass
+            if rev is not None:
+                try: rev_out[qk] = float(rev)
+                except: pass
+        return eps_out, rev_out
+    except Exception as e:
+        return {}, {}
+
 def _finnhub_rev_estimate_monthly(ticker):
-    """Revenue estimates require Finnhub paid tier."""
-    return {}
+    _, rev = _fmp_estimates(ticker)
+    return rev
 
 def _finnhub_eps_estimate(ticker):
-    """EPS estimates require Finnhub paid tier."""
-    return {}
+    eps, _ = _fmp_estimates(ticker)
+    return eps
 
 def _finnhub_rev_estimate(ticker):
-    """Revenue estimates require Finnhub paid tier."""
-    return {}
+    _, rev = _fmp_estimates(ticker)
+    return rev
 
 def _fetch_one(ticker):
     qtrs = _sec_annual_fallback(ticker)
