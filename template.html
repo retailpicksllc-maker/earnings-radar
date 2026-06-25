@@ -349,7 +349,7 @@ function fmtWR(dates){
 function changeWeek(d){wOff+=d;renderWeek();}
 function goNow(){wOff=0;renderWeek();}
 
-function getRows(iso){if(iso<TODAY_ISO)return PAST_DATA[iso]||[];if(iso===TODAY_ISO&&(PAST_DATA[iso]||[]).length)return PAST_DATA[iso];return DATA[iso]||[];}
+function getRows(iso){if(iso<TODAY_ISO)return PAST_DATA[iso]||[];if(iso===TODAY_ISO&&(PAST_DATA[iso]||[]).length){const nd=DATA[iso]||[];const mc={};nd.forEach(r=>{if(r.marketCap)mc[r.symbol]=r.marketCap;if(r.time)mc['t_'+r.symbol]=r.time;});return (PAST_DATA[iso]||[]).map(r=>({...r,marketCap:r.marketCap||mc[r.symbol]||'',time:r.time||mc['t_'+r.symbol]||'time-not-supplied'}));}return DATA[iso]||[];}
 
 function renderWeek(){
   const dates=weekDates(wOff);
