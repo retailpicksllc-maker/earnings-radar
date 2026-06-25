@@ -294,11 +294,25 @@ const REV_EST=__REV_EST_JS__;
 const EPS_EST=__EPS_EST_JS__;
 const NEWS=__NEWS_JS__;
 const META=__META_JS__;
-const BUILT_AT=__BUILT_AT__;
+const BUILT_AT=__BUILT_AT__;const FH_KEY=__FINNHUB_KEY__;
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function fmtM(v){if(v==null||v===0)return'—';return v>=1000?'$'+(v/1000).toFixed(2)+'B':'$'+v.toFixed(2)+'M';}
 function fmtMcap(v){if(!v||v<1e6)return'—';if(v>=1e12)return'$'+(v/1e12).toFixed(2)+'T';if(v>=1e9)return'$'+(v/1e9).toFixed(1)+'B';return'$'+(v/1e6).toFixed(0)+'M';}
+function fetchLivePrice(sym){
+  if(!FH_KEY||!sym)return;
+  const el=document.getElementById('live-price-'+sym);
+  if(!el)return;
+  el.textContent='…';
+  fetch(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${FH_KEY}`)
+    .then(r=>r.json())
+    .then(d=>{
+      if(!d||!d.c)return;
+      const p=d.c,chg=d.dp;
+      const sign=chg>=0?'+':'';
+      const col=chg>=0?'var(--accent2)':'var(--red)';el.innerHTML='$'+p.toFixed(2)+' <span style="color:'+col+';font-size:11px">'+sign+chg.toFixed(2)+'%</span>';
+    }).catch(()=>{el.textContent='—';});
+}
 function pmcap(s,sym){const v=s||"";const n=parseFloat(v.replace(/[$,]/g,""));if(!isNaN(n)&&n>0)return n;if(sym&&MKTCAP[sym]){try{return parseFloat(MKTCAP[sym].replace(/[$,]/g,""));}catch{}}return 0;}
 function qLbl(s){if(!s)return'';const p=s.split(' ');const m=p[0],y=p[1]||'';const qi={Jan:4,Feb:4,Mar:1,Apr:1,May:2,Jun:2,Jul:2,Aug:3,Sep:3,Oct:3,Nov:4,Dec:4};return'Q'+(qi[m]||'?')+' '+(y?y.slice(2):'');}
 
@@ -524,6 +538,7 @@ function _nearestRev(dict, fqe){
 function openStock(sym){
   selSym=sym;
   document.querySelectorAll('.logo-card').forEach(c=>c.classList.toggle('sel',c.querySelector('.logo-sym')?.textContent===sym));
+  setTimeout(()=>fetchLivePrice(sym),50);
   document.getElementById('feedPane').style.display='none';
   const sd=document.getElementById('sdPane');
   sd.style.display='flex';
@@ -664,6 +679,7 @@ function openStock(sym){
   const totQ=hist.filter(q=>q.percentageSurprise!=='');
   const beatPct=totQ.length?Math.round(beatQ.length/totQ.length*100):null;
   document.getElementById('sdMet').innerHTML=`
+    <div class="met"><div class="met-lbl">Live Price</div><div class="met-val" id="live-price-${sym}" style="font-size:13px">—</div></div>
     <div class="met"><div class="met-lbl">Mkt Cap</div><div class="met-val">${fmtMcap(mc)}</div></div>
     <div class="met"><div class="met-lbl">EPS TTM</div><div class="met-val">${epsTTM?'$'+epsTTM.toFixed(2):'—'}</div></div>
     <div class="met"><div class="met-lbl">REV TTM</div><div class="met-val">${revTTM?fmtM(revTTM):'—'}</div></div>

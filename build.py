@@ -461,40 +461,54 @@ try:
                 for v in json.loads(urllib.request.urlopen(_req, timeout=15).read()).values()}
 except: pass
 
-def _fmp_income(ticker):
-    """Fetch quarterly revenue + EPS from FMP income statement."""
-    if not FMP_API_KEY:
-        return {}, {}
+def _sec_quarterly(ticker):
+    """Fetch quarterly revenue from SEC EDGAR 10-Q filings — completely free."""
+    cik = _cik_map.get(ticker)
+    if not cik: return {}
     try:
-        url = f'https://financialmodelingprep.com/api/v3/income-statement/{ticker}?period=quarter&limit=12&apikey={FMP_API_KEY}'
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as r:
-            rows = json.loads(r.read())
-        if not rows or not isinstance(rows, list):
-            return {}, {}
-        rev_out, eps_out = {}, {}
-        for row in rows:
-            date = row.get('date', '')
-            if not date: continue
-            try:
-                from datetime import datetime as _dt
-                d = _dt.strptime(date[:10], '%Y-%m-%d')
-                qk = d.strftime('%b %Y')
-            except: continue
-            rev = row.get('revenue')
-            eps = row.get('eps')
-            if rev is not None:
-                try: rev_out[qk] = round(float(rev) / 1e6, 1)
-                except: pass
-            if eps is not None:
-                try: eps_out[qk] = float(eps)
-                except: pass
-        return rev_out, eps_out
-    except: return {}, {}
+        url = f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json'
+        req = urllib.request.Request(url, headers={'User-Agent': 'retail.picksllc@gmail.com'})
+        facts = json.loads(urllib.request.urlopen(req, timeout=20).read())
+        result = {}
+        for taxonomy in ['us-gaap', 'ifrs-full']:
+            tax = facts.get('facts', {}).get(taxonomy, {})
+            for field in ['Revenues', 'Revenue',
+                          'RevenueFromContractWithCustomerExcludingAssessedTax',
+                          'SalesRevenueNet', 'NoninterestIncome',
+                          'RealEstateRevenueNet', 'RevenueFromContractWithCustomerIncludingAssessedTax']:
+                if field not in tax: continue
+                for cur, entries in tax[field].get('units', {}).items():
+                    fx = _FX.get(cur, 1.0) if cur != 'USD' else 1.0
+                    for e in entries:
+                        if e.get('form') not in ('10-Q', '10-K', '20-F'): continue
+                        val = e.get('val', 0)
+                        if not val or val <= 0: continue
+                        val_usd = val / fx / 1e6
+                        if val_usd < 0.01 or val_usd > 5e6: continue
+                        try:
+                            start_s = e.get('start', '')
+                            end_s = e['end']
+                            if not start_s: continue
+                            s = datetime.strptime(start_s, '%Y-%m-%d')
+                            en = datetime.strptime(end_s, '%Y-%m-%d')
+                            days = (en - s).days
+                            if 60 <= days <= 105:  # quarterly ~90 days
+                                k = en.strftime('%b %Y')
+                                if k not in result:
+                                    result[k] = round(val_usd, 1)
+                        except: continue
+                if result: break
+            if result: break
+        return result
+    except: return {}
+
+def _fmp_income(ticker):
+    """Kept for backward compat — now just calls SEC quarterly."""
+    rev = _sec_quarterly(ticker)
+    return rev, {}
 
 def _sec_annual_fallback(ticker):
-    """Replaced by FMP income statement."""
-    return {}
+    return _sec_quarterly(ticker)
 
 
 def _fmp_estimates(ticker):
@@ -795,6 +809,7 @@ output = (template
     .replace('__NEWS_JS__',     json.dumps(news,       ensure_ascii=False))
     .replace('__META_JS__',     json.dumps(stock_meta, ensure_ascii=False))
     .replace('__MKTCAP_JS__',    json.dumps(mktcap_cache, ensure_ascii=False))
+    .replace('__FINNHUB_KEY__',  json.dumps(FINNHUB_KEY))
     .replace('__BUILT_AT__',    json.dumps(built_at)))
 
 with open('docs/index.html', 'w') as f:
