@@ -468,8 +468,8 @@ function buildFeed(weekDates){
   }
   document.getElementById('feedSub').textContent=items.length?'Recent Results':'';
   items.slice(0,20).forEach(item=>{
-    const eps=parseFloat((item.eps||'').replace(/[$,]/g,''));
-    const est=parseFloat((item.epsForecast||'').replace(/[$,]/g,''));
+    const eps=parseFloat(String(item.eps||'').replace(/[$,]/g,''));
+    const est=parseFloat(String(item.epsForecast||'').replace(/[$,]/g,''));
     const surp=parseFloat(item.surprise||0);
     const div=document.createElement('div');
     div.className='feed-item';
