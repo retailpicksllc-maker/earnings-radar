@@ -1588,5 +1588,19 @@ function closeReport(){
     <div id="reportBody"></div>
   </div>
 </div>
+<script>
+// Auto-reload when a new build is deployed
+(function(){
+  function checkForUpdate(){
+    fetch(location.pathname + '?_cb=' + Date.now(), {cache:'no-store'})
+      .then(r=>r.text())
+      .then(html=>{
+        const m = html.match(/BUILT_AT="([^"]+)"/);
+        if(m && m[1] !== BUILT_AT) location.reload(true);
+      }).catch(()=>{});
+  }
+  setInterval(checkForUpdate, 3*60*1000); // check every 3 minutes
+})();
+</script>
 </body>
 </html>
