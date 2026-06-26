@@ -831,60 +831,34 @@ upcoming_price_syms = list(dict.fromkeys(sym for _, sym in upcoming_for_price))[
 
 price_syms = past_price_syms + upcoming_price_syms
 
-# Fetch prices via yfinance with signal.alarm hard timeout per batch
-print(f"Fetching prices for {len(price_syms)} tickers via yfinance...")
-try:
-    import yfinance as yf, signal
-
-    def _yf_timeout(signum, frame): raise TimeoutError("yfinance hung")
-    signal.signal(signal.SIGALRM, _yf_timeout)
-
-    def _parse_yf_df(df, syms):
-        if df is None or df.empty: return
-        # Handle single vs multi-ticker column structure
-        try:
-            close = df['Close']
-        except: return
-        if not hasattr(close, 'columns'):
-            # Single ticker — close is a Series
-            series = close.dropna()
-            sym = syms[0]
-            if len(series) >= 1:
-                c = round(float(series.iloc[-1]), 2)
-                pc = round(float(series.iloc[-2]), 2) if len(series) >= 2 else c
-                dp = round((c - pc) / pc * 100, 2) if pc else 0.0
-                price_data[sym] = {'c': c, 'dp': dp, 'pc': pc}
-        else:
-            for sym in syms:
+# Fetch prices via Finnhub (reliable, ~60 tickers within free-tier rate limit)
+if FINNHUB_KEY and price_syms:
+    print(f"Fetching prices for {len(price_syms)} tickers via Finnhub...")
+    try:
+        import time as _time
+        from concurrent.futures import as_completed
+        def _fetch_price(sym):
+            try:
+                url = f'https://finnhub.io/api/v1/quote?symbol={sym}&token={FINNHUB_KEY}'
+                req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=3) as r:
+                    d = json.loads(r.read())
+                if d and d.get('c'):
+                    return sym, {'c':round(d['c'],2),'dp':round(d.get('dp',0),2),'pc':round(d.get('pc',0),2)}
+            except: pass
+            return sym, None
+        with ThreadPoolExecutor(max_workers=15) as ex:
+            futures = {ex.submit(_fetch_price, sym): sym for sym in price_syms}
+            _deadline = _time.time() + 45
+            for fut in as_completed(futures, timeout=50):
+                if _time.time() > _deadline: break
                 try:
-                    col = close[sym] if sym in close.columns else None
-                    if col is None: continue
-                    series = col.dropna()
-                    if len(series) >= 1:
-                        c = round(float(series.iloc[-1]), 2)
-                        pc = round(float(series.iloc[-2]), 2) if len(series) >= 2 else c
-                        dp = round((c - pc) / pc * 100, 2) if pc else 0.0
-                        price_data[sym] = {'c': c, 'dp': dp, 'pc': pc}
+                    sym, p = fut.result()
+                    if p: price_data[sym] = p
                 except: pass
-
-    batch_size = 50
-    for i in range(0, len(price_syms), batch_size):
-        batch = price_syms[i:i+batch_size]
-        try:
-            signal.alarm(25)  # 25s hard timeout per batch
-            df = yf.download(batch, period='5d', interval='1d',
-                             auto_adjust=True, progress=False, threads=False)
-            signal.alarm(0)
-            _parse_yf_df(df, batch)
-        except TimeoutError:
-            signal.alarm(0)
-            print(f"  WARN batch {i} timed out, skipping")
-        except Exception as e:
-            signal.alarm(0)
-            print(f"  WARN batch {i}: {e}")
-except Exception as e:
-    print(f"  WARN yfinance setup: {e}")
-print(f"  Got prices for {len(price_data)} tickers")
+    except Exception as e:
+        print(f"  WARN price fetch: {e}")
+    print(f"  Got prices for {len(price_data)} tickers")
 
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
