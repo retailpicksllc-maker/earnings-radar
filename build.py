@@ -804,7 +804,16 @@ except Exception as e:
 
 # ── 4b. Fetch live prices for calendar tickers ───────────────────────────────
 price_data = {}
-price_syms = list({r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')})
+# Collect upcoming tickers sorted by market cap descending (largest first)
+upcoming_for_price = []
+for rows in earnings.values():
+    for r in rows:
+        sym = r.get('symbol','')
+        if sym:
+            mc = parse_mcap(r.get('marketCap','')) or parse_mcap(mktcap_cache.get(sym,''))
+            upcoming_for_price.append((mc, sym))
+upcoming_for_price.sort(reverse=True)
+price_syms = list(dict.fromkeys(sym for _, sym in upcoming_for_price))  # dedup, preserve order
 # Also add recent past tickers (last 3 days)
 recent3 = (today - timedelta(days=3)).strftime('%Y-%m-%d')
 for iso, rows in past_earnings.items():
@@ -831,7 +840,7 @@ if FINNHUB_KEY and price_syms:
         import time as _time
         from concurrent.futures import as_completed
         with ThreadPoolExecutor(max_workers=15) as ex:
-            futures = {ex.submit(fetch_price, sym): sym for sym in price_syms[:100]}
+            futures = {ex.submit(fetch_price, sym): sym for sym in price_syms[:200]}
             _deadline = _time.time() + 45
             for fut in as_completed(futures, timeout=45):
                 if _time.time() > _deadline: break
