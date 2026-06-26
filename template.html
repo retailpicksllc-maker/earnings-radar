@@ -204,6 +204,9 @@ table.ht{width:100%;border-collapse:collapse;font-size:11px}
 
 .slide-card{background:var(--surface);border:1px solid var(--border2);border-radius:20px;overflow:hidden;max-height:80vh;overflow-y:auto}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+@keyframes priceFlicker{0%{opacity:1}25%{opacity:0.15}50%{opacity:0.9}70%{opacity:0.3}100%{opacity:1}}
+.price-tick{animation:priceFlicker 0.35s ease}
 </style>
 <script>
 // v10f3895 — force reload if browser has older cached version
@@ -310,21 +313,63 @@ function mktSession(){
   if(mins>=960&&mins<1200)return'after'; // 4pm-8pm
   return'closed';
 }
-function fetchLivePrice(sym){
+let _livePriceTimer=null, _livePriceSym=null;
+
+function _renderPrice(sym,c,dp,session){
   const el=document.getElementById('live-price-'+sym);
   const lbl=document.getElementById('live-price-lbl-'+sym);
   if(!el)return;
-  const d=PRICES[sym];
-  if(!d||!d.c){el.textContent='—';return;}
-  const p=d.c,chg=d.dp;
-  const sign=chg>=0?'+':'';
-  const col=chg>=0?'var(--accent2)':'var(--red)';
-  el.innerHTML='$'+p.toFixed(2)+' <span style="color:'+col+';font-size:11px">'+sign+chg.toFixed(2)+'%</span>';
+  const sign=dp>=0?'+':'';
+  const col=dp>=0?'var(--accent2)':'var(--red)';
+  el.innerHTML='$'+c.toFixed(2)+' <span style="color:'+col+';font-size:11px">'+sign+dp.toFixed(2)+'%</span>';
+  el.classList.remove('price-tick');
+  void el.offsetWidth; // force reflow to restart animation
+  el.classList.add('price-tick');
   if(lbl){
-    const s=mktSession();
-    lbl.textContent=s==='pre'?'Pre-Mkt':s==='after'?'After Hrs':s==='open'?'Live':'Price';
-    lbl.style.color=s==='open'?'var(--accent2)':s==='closed'?'var(--faint)':'var(--muted)';
+    lbl.textContent=session==='pre'?'Pre-Mkt':session==='after'?'After Hrs':session==='open'?'Live':'Price';
+    lbl.style.color=session==='open'?'var(--accent2)':session==='closed'?'var(--faint)':'var(--muted)';
   }
+}
+
+async function _fetchYFPrice(sym){
+  try{
+    const url='https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1m&range=1d&includePrePost=true&corsDomain=finance.yahoo.com';
+    const r=await fetch(url,{headers:{'Accept':'application/json'}});
+    if(!r.ok)return null;
+    const d=await r.json();
+    const meta=(d.chart||{}).result?.[0]?.meta;
+    if(!meta)return null;
+    const s=mktSession();
+    let price=meta.regularMarketPrice;
+    let pc=meta.previousClose||meta.chartPreviousClose||meta.regularMarketPrice;
+    // Use pre/post market price if in session
+    if(s==='pre'&&meta.preMarketPrice) price=meta.preMarketPrice;
+    if(s==='after'&&meta.postMarketPrice) price=meta.postMarketPrice;
+    if(!price)return null;
+    const dp=(pc&&pc!==0)?((price-pc)/pc*100):0;
+    return{c:price,dp:dp,pc:pc};
+  }catch(e){return null;}
+}
+
+function fetchLivePrice(sym){
+  // Stop any existing poll
+  if(_livePriceTimer){clearInterval(_livePriceTimer);_livePriceTimer=null;}
+  _livePriceSym=sym;
+  const el=document.getElementById('live-price-'+sym);
+  if(!el)return;
+  // Show build-time price immediately as fallback
+  const fallback=PRICES[sym];
+  if(fallback&&fallback.c){
+    _renderPrice(sym,fallback.c,fallback.dp||0,mktSession());
+  }
+  // Then fetch live from Yahoo Finance and keep polling
+  const poll=async()=>{
+    if(_livePriceSym!==sym)return;
+    const d=await _fetchYFPrice(sym);
+    if(d&&d.c&&_livePriceSym===sym) _renderPrice(sym,d.c,d.dp,mktSession());
+  };
+  poll();
+  _livePriceTimer=setInterval(poll,5000);
 }
 function pmcap(s,sym){const v=s||"";const n=parseFloat(v.replace(/[$,]/g,""));if(!isNaN(n)&&n>0)return n;if(sym&&MKTCAP[sym]){try{return parseFloat(MKTCAP[sym].replace(/[$,]/g,""));}catch{}}return 0;}
 function qLbl(s){if(!s)return'';const p=s.split(' ');const m=p[0],y=p[1]||'';const qi={Jan:4,Feb:4,Mar:1,Apr:1,May:2,Jun:2,Jul:2,Aug:3,Sep:3,Oct:3,Nov:4,Dec:4};return'Q'+(qi[m]||'?')+' '+(y?y.slice(2):'');}
@@ -939,6 +984,8 @@ function buildNews(sym){
 
 function closeDetail(){
   selSym=null;
+  if(_livePriceTimer){clearInterval(_livePriceTimer);_livePriceTimer=null;}
+  _livePriceSym=null;
   document.getElementById('sdPane').style.display='none';
   document.getElementById('feedPane').style.display='flex';
   document.querySelectorAll('.logo-card.sel').forEach(c=>c.classList.remove('sel'));
