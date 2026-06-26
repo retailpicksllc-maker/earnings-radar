@@ -297,7 +297,7 @@ const REV_EST=__REV_EST_JS__;
 const EPS_EST=__EPS_EST_JS__;
 const NEWS=__NEWS_JS__;
 const META=__META_JS__;
-const BUILT_AT=__BUILT_AT__;
+const BUILT_AT=__BUILT_AT__;const FH_KEY=__FH_KEY_JS__;
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function fmtM(v){if(v==null||v===0)return'—';return v>=1000?'$'+(v/1000).toFixed(2)+'B':'$'+v.toFixed(2)+'M';}
@@ -332,22 +332,14 @@ function _renderPrice(sym,c,dp,session){
 }
 
 async function _fetchYFPrice(sym){
+  if(!FH_KEY)return null;
   try{
-    const url='https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1m&range=1d&includePrePost=true&corsDomain=finance.yahoo.com';
+    const url='https://finnhub.io/api/v1/quote?symbol='+encodeURIComponent(sym)+'&token='+FH_KEY;
     const r=await fetch(url,{headers:{'Accept':'application/json'}});
     if(!r.ok)return null;
     const d=await r.json();
-    const meta=(d.chart||{}).result?.[0]?.meta;
-    if(!meta)return null;
-    const s=mktSession();
-    let price=meta.regularMarketPrice;
-    let pc=meta.previousClose||meta.chartPreviousClose||meta.regularMarketPrice;
-    // Use pre/post market price if in session
-    if(s==='pre'&&meta.preMarketPrice) price=meta.preMarketPrice;
-    if(s==='after'&&meta.postMarketPrice) price=meta.postMarketPrice;
-    if(!price)return null;
-    const dp=(pc&&pc!==0)?((price-pc)/pc*100):0;
-    return{c:price,dp:dp,pc:pc};
+    if(!d||!d.c)return null;
+    return{c:d.c,dp:d.dp||0,pc:d.pc||d.c};
   }catch(e){return null;}
 }
 

@@ -877,6 +877,7 @@ output = (template
     .replace('__META_JS__',     json.dumps(stock_meta, ensure_ascii=False))
     .replace('__PRICES_JS__',     json.dumps(price_data, ensure_ascii=False))
     .replace('__MKTCAP_JS__',    json.dumps(mktcap_cache, ensure_ascii=False))
+    .replace('__FH_KEY_JS__',   json.dumps(FINNHUB_KEY, ensure_ascii=False))
     .replace('__BUILT_AT__',    json.dumps(built_at)))
 
 with open('docs/index.html', 'w') as f:
