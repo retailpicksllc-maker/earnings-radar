@@ -476,7 +476,6 @@ function renderWeek(){
       // After-hours section
       if(aft.length)col.appendChild(makeSection(mktClose?'🌙 After Close':'🌙 After Close',aft));
       // Show unconfirmed tickers too
-      if(unk.length)col.appendChild(makeSection('📅 Unconfirmed',unk));
     }
     grid.appendChild(col);
   });
