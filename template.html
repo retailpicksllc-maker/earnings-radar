@@ -463,12 +463,20 @@ function renderWeek(){
       col.appendChild(makeSection('📋 Reported',sorted));
     } else {
       const sortMC=(a,b)=>pmcap(b.marketCap,b.symbol)-pmcap(a.marketCap,a.symbol);
+      const etNow=new Date(new Date().toLocaleString('en-US',{timeZone:'America/New_York'}));
+      const etMins=etNow.getHours()*60+etNow.getMinutes();
+      const mktOpen=etMins>=570; // past 9:30am ET
+      const mktClose=etMins>=960; // past 4pm ET
       const pre=[...rows.filter(r=>r.time==='time-pre-market')].sort(sortMC);
       const aft=[...rows.filter(r=>r.time==='time-after-hours')].sort(sortMC);
       const unk=[...rows.filter(r=>r.time!=='time-pre-market'&&r.time!=='time-after-hours')].sort(sortMC);
-      if(pre.length)col.appendChild(makeSection('☀️ Before Open',pre));
-      if(aft.length)col.appendChild(makeSection('🌙 After Close',aft));
-      // Unconfirmed tickers hidden
+      // After market open: pre-market reporters already reported
+      if(mktOpen&&pre.length)col.appendChild(makeSection('📋 Reported',pre));
+      else if(!mktOpen&&pre.length)col.appendChild(makeSection('☀️ Before Open',pre));
+      // After-hours section
+      if(aft.length)col.appendChild(makeSection(mktClose?'🌙 After Close':'🌙 After Close',aft));
+      // Show unconfirmed tickers too
+      if(unk.length)col.appendChild(makeSection('📅 Unconfirmed',unk));
     }
     grid.appendChild(col);
   });
