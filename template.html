@@ -438,7 +438,20 @@ function fmtWR(dates){
 function changeWeek(d){wOff+=d;renderWeek();}
 function goNow(){wOff=0;renderWeek();}
 
-function getRows(iso){if(iso<TODAY_ISO)return PAST_DATA[iso]||[];if(iso===TODAY_ISO&&(PAST_DATA[iso]||[]).length){const nd=DATA[iso]||[];const mc={};nd.forEach(r=>{if(r.marketCap)mc[r.symbol]=r.marketCap;if(r.time)mc['t_'+r.symbol]=r.time;});return (PAST_DATA[iso]||[]).map(r=>({...r,marketCap:r.marketCap||mc[r.symbol]||'',time:r.time||mc['t_'+r.symbol]||'time-not-supplied'}));}return DATA[iso]||[];}
+function getRows(iso){
+  if(iso<TODAY_ISO)return PAST_DATA[iso]||[];
+  // For today: start with DATA (upcoming/confirmed times), enrich with PAST_DATA actual EPS
+  const upcoming=DATA[iso]||[];
+  const past=PAST_DATA[iso]||[];
+  if(!past.length)return upcoming;
+  const pastMap={};past.forEach(r=>{pastMap[r.symbol]=r;});
+  // Merge: DATA entries get actual EPS from PAST_DATA if available
+  const merged=upcoming.map(r=>{const p=pastMap[r.symbol];return p?{...r,eps:r.eps||p.eps,epsActual:p.epsActual}:r;});
+  // Add PAST_DATA entries not in DATA (already reported, not in upcoming list)
+  const upSyms=new Set(upcoming.map(r=>r.symbol));
+  past.forEach(r=>{if(!upSyms.has(r.symbol)&&r.epsActual!=null)merged.push(r);});
+  return merged;
+}
 
 function renderWeek(){
   const dates=weekDates(wOff);
