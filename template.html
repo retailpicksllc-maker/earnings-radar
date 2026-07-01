@@ -490,10 +490,8 @@ function renderWeek(){
       const sortMC=(a,b)=>pmcap(b.marketCap,b.symbol)-pmcap(a.marketCap,a.symbol);
       const pre=[...rows.filter(r=>r.time==='time-pre-market')].sort(sortMC);
       const aft=[...rows.filter(r=>r.time==='time-after-hours')].sort(sortMC);
-      const unk=[...rows.filter(r=>r.time!=='time-pre-market'&&r.time!=='time-after-hours')].sort(sortMC);
       if(pre.length)col.appendChild(makeSection('☀️ Pre Market',pre));
       if(aft.length)col.appendChild(makeSection('🌙 After Close',aft));
-      if(unk.length)col.appendChild(makeSection('📅 TBD',unk));
     }
     grid.appendChild(col);
   });
