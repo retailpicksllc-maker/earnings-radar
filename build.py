@@ -823,10 +823,23 @@ for _t, _qs in history.items():
             continue
         _hist_by_key[(_t, _iso)] = _q
 
+def _hist_near(sym, iso):
+    """History row for (sym, report date) with ±2-day tolerance — sources
+    disagree on AMC/BMO date conventions."""
+    try:
+        base = datetime.strptime(iso, '%Y-%m-%d')
+    except:
+        return None
+    for off in (0, 1, -1, 2, -2):
+        q = _hist_by_key.get((sym, (base + timedelta(days=off)).strftime('%Y-%m-%d')))
+        if q:
+            return q
+    return None
+
 for _d, _rows in past_earnings.items():
     for _r in _rows:
         _sym = _r.get('symbol', '')
-        _q = _hist_by_key.get((_sym, _d))
+        _q = _hist_near(_sym, _d)
         if _q:
             if _r.get('epsActual') is None and _q.get('eps') is not None:
                 _r['epsActual'] = _q['eps']
