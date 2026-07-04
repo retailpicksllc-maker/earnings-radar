@@ -104,6 +104,44 @@ try:
     with open(mktcap_cache_path) as _f: mktcap_cache = json.load(_f)
 except: mktcap_cache = {}
 
+def parse_mcap(s):
+    if not s: return 0
+    try: return float(s.replace('$', '').replace(',', ''))
+    except: return 0
+
+def mcap_of(r):
+    """Market cap from row, falling back to the cross-build cache."""
+    return parse_mcap(r.get('marketCap', '')) or parse_mcap(mktcap_cache.get(r.get('symbol', ''), ''))
+
+def fetch_mcap_finnhub(sym):
+    """Backfill unknown market caps (Finnhub rows carry none) — cached across builds."""
+    try:
+        d = finnhub_get(f'/stock/profile2?symbol={sym}')
+        mc = d.get('marketCapitalization')  # in $ millions
+        if mc:
+            return sym, f'${mc * 1e6:,.0f}'
+    except:
+        pass
+    return sym, ''
+
+def backfill_mcaps(calendar, label):
+    if not FINNHUB_KEY:
+        return
+    unknown = [r.get('symbol', '') for rows in calendar.values() for r in rows
+               if r.get('symbol') and not mcap_of(r)]
+    unknown = list(dict.fromkeys(unknown))[:120]  # cap per build; cache converges over runs
+    if unknown:
+        print(f"  Backfilling market cap for {len(unknown)} {label} tickers...")
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            for sym, mc in ex.map(fetch_mcap_finnhub, unknown, timeout=180):
+                if mc:
+                    mktcap_cache[sym] = mc
+
+def filter_1b(calendar):
+    """Keep only $1B+ market-cap tickers; drop empty days."""
+    out = {d: [r for r in rows if mcap_of(r) > 1e9] for d, rows in calendar.items()}
+    return {d: rows for d, rows in out.items() if rows}
+
 for date_str, rows in zip(td_list, results):
     if rows:
         earnings[date_str] = rows
@@ -141,8 +179,12 @@ if far_td_list:
     except Exception as e:
         print(f"  ERR Finnhub far-out: {e}")
 
+# ── $1B+ market-cap filter (upcoming) ─────────────────────────────────────────
+backfill_mcaps(earnings, 'upcoming')
+earnings = filter_1b(earnings)
+
 total_companies = sum(len(v) for v in earnings.values())
-print(f"  Got {total_companies} companies across {len(earnings)} days")
+print(f"  Got {total_companies} companies across {len(earnings)} days (after $1B filter)")
 
 # ── Past earnings calendar (Finnhub, cached in 90-day chunks) ────────────────
 PAST_CACHE_FILE = 'data/past_calendar_cache.json'
@@ -225,11 +267,14 @@ for d, rows in past_calendar_cached.items():
         past_earnings[d] = clean_rows
 print(f"  Past earnings: {len(past_earnings)} days with data (filtered pre-placed upcoming tickers)")
 
+# ── $1B+ market-cap filter (past) ─────────────────────────────────────────────
+# Note: the past cache keeps ALL rows — the filter only applies to what gets
+# published, so a ticker that later grows past $1B reappears automatically.
+backfill_mcaps(past_earnings, 'past')
+past_earnings = filter_1b(past_earnings)
+print(f"  Past earnings after $1B filter: {sum(len(v) for v in past_earnings.values())} companies across {len(past_earnings)} days")
+
 # ── 2. Earnings history ───────────────────────────────────────────────────────
-def parse_mcap(s):
-    if not s: return 0
-    try: return float(s.replace('$', '').replace(',', ''))
-    except: return 0
 
 # top_tickers: for history fetch — keep lean (≤400)
 # Priority 1: recent past reporters (last 14 days) with mc > 1B — always include
@@ -903,19 +948,23 @@ built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
 with open('template.html', 'r') as f:
     template = f.read()
 
+def js_safe(obj):
+    """JSON for embedding in <script>: escape < to prevent </script> breakout (XSS)."""
+    return json.dumps(obj, ensure_ascii=False).replace('<', '\\u003c')
+
 output = (template
-    .replace('__PAST_EARNINGS_JS__', json.dumps(past_earnings, ensure_ascii=False))
-    .replace('__EARNINGS_JS__', json.dumps(earnings,   ensure_ascii=False))
-    .replace('__HISTORY_JS__',  json.dumps(history,    ensure_ascii=False))
-    .replace('__REVENUE_JS__',  json.dumps(revenue_data, ensure_ascii=False))
-    .replace('__REV_EST_JS__', json.dumps(rev_est_data,  ensure_ascii=False))
-    .replace('__EPS_EST_JS__', json.dumps(eps_est_data,  ensure_ascii=False))
-    .replace('__NEWS_JS__',     json.dumps(news,       ensure_ascii=False))
-    .replace('__META_JS__',     json.dumps(stock_meta, ensure_ascii=False))
-    .replace('__PRICES_JS__',     json.dumps(price_data, ensure_ascii=False))
-    .replace('__MKTCAP_JS__',    json.dumps(mktcap_cache, ensure_ascii=False))
-    .replace('__FH_KEY_JS__',   json.dumps(FINNHUB_KEY, ensure_ascii=False))
-    .replace('__BUILT_AT__',    json.dumps(built_at)))
+    .replace('__PAST_EARNINGS_JS__', js_safe(past_earnings))
+    .replace('__EARNINGS_JS__', js_safe(earnings))
+    .replace('__HISTORY_JS__',  js_safe(history))
+    .replace('__REVENUE_JS__',  js_safe(revenue_data))
+    .replace('__REV_EST_JS__', js_safe(rev_est_data))
+    .replace('__EPS_EST_JS__', js_safe(eps_est_data))
+    .replace('__NEWS_JS__',     js_safe(news))
+    .replace('__META_JS__',     js_safe(stock_meta))
+    .replace('__PRICES_JS__',     js_safe(price_data))
+    .replace('__MKTCAP_JS__',    js_safe(mktcap_cache))
+    .replace('__FH_KEY_JS__',   js_safe(FINNHUB_KEY))
+    .replace('__BUILT_AT__',    js_safe(built_at)))
 
 with open('docs/index.html', 'w') as f:
     f.write(output)
