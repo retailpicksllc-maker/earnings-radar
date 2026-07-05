@@ -179,6 +179,34 @@ if far_td_list:
     except Exception as e:
         print(f"  ERR Finnhub far-out: {e}")
 
+# ── Merge Finnhub estimates/actuals into near-window NASDAQ rows ──────────────
+# NASDAQ rows carry no revenue estimates; Finnhub's calendar covers far more
+# tickers than FMP free tier (incl. thin names like FIZZ).
+try:
+    fh_near = finnhub_get(f'/calendar/earnings?from={td_list[0]}&to={td_list[-1]}')
+    fh_map = {}
+    for r in fh_near.get('earningsCalendar', []):
+        if r.get('symbol') and r.get('date'):
+            fh_map[(r['date'], r['symbol'])] = r
+    filled = 0
+    for date_str, rows in earnings.items():
+        for row in rows:
+            fh = fh_map.get((date_str, row.get('symbol', '')))
+            if not fh:
+                continue
+            if not row.get('eps') and fh.get('epsEstimate') is not None:
+                row['eps'] = fh['epsEstimate']
+            if row.get('epsActual') is None and fh.get('epsActual') is not None:
+                row['epsActual'] = fh['epsActual']
+            if row.get('revenueEstimate') is None and fh.get('revenueEstimate') is not None:
+                row['revenueEstimate'] = fh['revenueEstimate']
+            if row.get('revenueActual') is None and fh.get('revenueActual') is not None:
+                row['revenueActual'] = fh['revenueActual']
+            filled += 1
+    print(f"  Finnhub near-window merge: {filled} upcoming rows enriched")
+except Exception as e:
+    print(f"  ERR Finnhub near merge: {e}")
+
 # ── $1B+ market-cap filter (upcoming) ─────────────────────────────────────────
 backfill_mcaps(earnings, 'upcoming')
 earnings = filter_1b(earnings)
@@ -790,6 +818,44 @@ for _t in set(rev_tickers) | set(_fmp_cal_rev) | set(_fmp_cal_eps):
     if _iso:
         fmp_est_data.setdefault(_t, {}).update(_iso)  # accumulate snapshots by report date
 print(f"  Estimates merged: rev {len(rev_est_data)}, eps {len(eps_est_data)} tickers")
+
+# ── Fallback: harvest estimates already sitting on calendar rows ──────────────
+# Finnhub rows carry epsEstimate/revenueEstimate for far more tickers than FMP
+# free tier. Upcoming rows take priority, then most recent past rows.
+def _parse_eps_str(v):
+    try:
+        s = str(v).replace('$', '').replace(',', '')
+        neg = '(' in s
+        s = s.replace('(', '').replace(')', '')
+        f = float(s)
+        return -f if neg else f
+    except:
+        return None
+
+def _harvest(rows_by_date, dates):
+    for _d in dates:
+        for _r in rows_by_date.get(_d, []):
+            _s = _r.get('symbol', '')
+            if not _s:
+                continue
+            _fq = (_r.get('fiscalQuarterEnding') or '').replace('/', ' ')
+            if not eps_est_data.get(_s):
+                _e = _parse_eps_str(_r.get('eps')) if _r.get('eps') not in (None, '') else None
+                if _e is not None:
+                    _dd = {'0q': _e}
+                    if _fq: _dd[_fq] = _e
+                    eps_est_data[_s] = _dd
+            if not rev_est_data.get(_s):
+                _rv = _r.get('revenueEstimate')
+                if _rv is not None:
+                    _rvm = round(_rv / 1e6, 1) if abs(_rv) >= 2e5 else round(float(_rv), 1)
+                    _dd = {'0q': _rvm}
+                    if _fq: _dd[_fq] = _rvm
+                    rev_est_data[_s] = _dd
+
+_harvest(earnings, sorted(earnings.keys()))                      # upcoming first
+_harvest(past_earnings, sorted(past_earnings.keys(), reverse=True))  # then newest past
+print(f"  After calendar-row harvest: rev {len(rev_est_data)}, eps {len(eps_est_data)} tickers")
 
 # Merge revenue into history — nearest-quarter match with fallback
 # 1. Exact match  2. ±2 months (handles fiscal offset)  3. Most recent prior value (≤18 months)
