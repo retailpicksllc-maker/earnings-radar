@@ -551,7 +551,10 @@ def _sec_quarterly(ticker):
                                 if k not in result:
                                     result[k] = round(val_usd, 1)
                         except: continue
-                if result: break
+                # NOTE: no break here — companies switched revenue tags around
+                # 2018 (ASC 606), so quarters are spread across multiple fields.
+                # Merge them all; earlier (preferred) tags win on conflicts via
+                # the `k not in result` guard above.
             if result: break
         return result
     except: return {}
@@ -669,7 +672,7 @@ upcoming_syms = set(r.get('symbol','') for rows in earnings.values() for r in ro
 # FMP income: fetch rev actuals + eps actuals for tickers not cached
 fmp_income_data = dict(fmp_income_cache)
 fmp_inc_fetch = [t for t in all_rev_tickers if t not in fmp_income_data or
-                 t in upcoming_syms]
+                 t in upcoming_syms or rev_is_stale(t)]
 # Also fetch for top_tickers not yet in income cache
 for sym in top_tickers:
     if sym not in fmp_income_data and sym not in fmp_inc_fetch:
