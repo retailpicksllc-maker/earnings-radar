@@ -903,6 +903,25 @@ for _d, _rows in past_earnings.items():
             _full += 1
 print(f"  Coverage (past 30d): {_full}/{_tot} rows have all 4 of eps act/est + rev act/est")
 
+# ── Drop tickers that don't file quarterly revenue (foreign ADRs, funds) ─────
+# Keep a ticker if we have quarterly revenue for it, or if we've never yet
+# attempted the SEC fetch (unknown ≠ non-filer; empties are retried each build).
+def _files_quarterly_rev(sym):
+    if revenue_data.get(sym):
+        return True
+    return sym not in fmp_income_data
+
+_bu = sum(len(v) for v in earnings.values())
+_bp = sum(len(v) for v in past_earnings.values())
+earnings = {d: [r for r in rows if _files_quarterly_rev(r.get('symbol', ''))]
+            for d, rows in earnings.items()}
+earnings = {d: rows for d, rows in earnings.items() if rows}
+past_earnings = {d: [r for r in rows if _files_quarterly_rev(r.get('symbol', ''))]
+                 for d, rows in past_earnings.items()}
+past_earnings = {d: rows for d, rows in past_earnings.items() if rows}
+print(f"  Non-filers removed: upcoming {_bu}->{sum(len(v) for v in earnings.values())}, "
+      f"past {_bp}->{sum(len(v) for v in past_earnings.values())}")
+
 # ── 3. News ───────────────────────────────────────────────────────────────────
 def strip_html(t):
     t = re.sub(r'<!\[CDATA\[(.*?)\]\]>', r'\1', t or '', flags=re.DOTALL)
