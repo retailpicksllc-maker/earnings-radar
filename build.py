@@ -1017,6 +1017,23 @@ past_earnings = {d: rows for d, rows in past_earnings.items() if rows}
 print(f"  Non-filers removed: upcoming {_bu}->{sum(len(v) for v in earnings.values())}, "
       f"past {_bp}->{sum(len(v) for v in past_earnings.values())}")
 
+# ── Drop tickers with no EPS estimate from any source ─────────────────────────
+# If neither the calendar row nor the harvested estimate tables have an est EPS,
+# there's nothing to compare actuals against — remove from the calendar.
+def _has_eps_est(r):
+    if r.get('eps') not in (None, ''):
+        return True
+    return bool(eps_est_data.get(r.get('symbol', '')))
+
+_bu2 = sum(len(v) for v in earnings.values())
+_bp2 = sum(len(v) for v in past_earnings.values())
+earnings = {d: [r for r in rows if _has_eps_est(r)] for d, rows in earnings.items()}
+earnings = {d: rows for d, rows in earnings.items() if rows}
+past_earnings = {d: [r for r in rows if _has_eps_est(r)] for d, rows in past_earnings.items()}
+past_earnings = {d: rows for d, rows in past_earnings.items() if rows}
+print(f"  No-EPS-est removed: upcoming {_bu2}->{sum(len(v) for v in earnings.values())}, "
+      f"past {_bp2}->{sum(len(v) for v in past_earnings.values())}")
+
 # ── 3. News ───────────────────────────────────────────────────────────────────
 def strip_html(t):
     t = re.sub(r'<!\[CDATA\[(.*?)\]\]>', r'\1', t or '', flags=re.DOTALL)
