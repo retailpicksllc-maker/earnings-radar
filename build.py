@@ -516,46 +516,73 @@ try:
 except: pass
 
 def _sec_quarterly(ticker):
-    """Fetch quarterly revenue from SEC EDGAR 10-Q filings — completely free."""
+    """Quarterly revenue from SEC EDGAR — free.
+    Collects every revenue-like XBRL tag as its own series (companies switched
+    tags around 2018, foreign filers use IFRS + 6-K/40-F), picks the dominant
+    series (largest recent value = total revenue, not a segment), then merges
+    other series only where they're consistent — keeps bank segment tags from
+    polluting the numbers."""
     cik = _cik_map.get(ticker)
     if not cik: return {}
     try:
         url = f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json'
         req = urllib.request.Request(url, headers={'User-Agent': 'retail.picksllc@gmail.com'})
         facts = json.loads(urllib.request.urlopen(req, timeout=20).read())
-        result = {}
+        series = []
         for taxonomy in ['us-gaap', 'ifrs-full']:
             tax = facts.get('facts', {}).get(taxonomy, {})
             for field in ['Revenues', 'Revenue',
                           'RevenueFromContractWithCustomerExcludingAssessedTax',
                           'SalesRevenueNet', 'NoninterestIncome',
-                          'RealEstateRevenueNet', 'RevenueFromContractWithCustomerIncludingAssessedTax']:
+                          'RealEstateRevenueNet', 'RevenueFromContractWithCustomerIncludingAssessedTax',
+                          # bank income-statement tags — banks don't file 'Revenues'
+                          'RevenuesNetOfInterestExpense',
+                          'InterestAndDividendIncomeOperating',
+                          'InterestIncomeExpenseNet']:
                 if field not in tax: continue
+                cur_series = {}
                 for cur, entries in tax[field].get('units', {}).items():
                     fx = _FX.get(cur, 1.0) if cur != 'USD' else 1.0
                     for e in entries:
-                        if e.get('form') not in ('10-Q', '10-K', '20-F'): continue
+                        if e.get('form') not in ('10-Q', '10-K', '20-F', '6-K', '40-F'): continue
                         val = e.get('val', 0)
                         if not val or val <= 0: continue
                         val_usd = val / fx / 1e6
                         if val_usd < 0.01 or val_usd > 5e6: continue
                         try:
                             start_s = e.get('start', '')
-                            end_s = e['end']
                             if not start_s: continue
                             s = datetime.strptime(start_s, '%Y-%m-%d')
-                            en = datetime.strptime(end_s, '%Y-%m-%d')
-                            days = (en - s).days
-                            if 60 <= days <= 105:  # quarterly ~90 days
-                                k = en.strftime('%b %Y')
-                                if k not in result:
-                                    result[k] = round(val_usd, 1)
+                            en = datetime.strptime(e['end'], '%Y-%m-%d')
+                            if 60 <= (en - s).days <= 105:  # quarterly ~90 days
+                                cur_series.setdefault(en.strftime('%b %Y'), round(val_usd, 1))
                         except: continue
-                # NOTE: no break here — companies switched revenue tags around
-                # 2018 (ASC 606), so quarters are spread across multiple fields.
-                # Merge them all; earlier (preferred) tags win on conflicts via
-                # the `k not in result` guard above.
-            if result: break
+                if cur_series:
+                    series.append(cur_series)
+        if not series:
+            return {}
+        def _latest_dt(d):
+            try: return max(datetime.strptime(k, '%b %Y') for k in d)
+            except: return datetime.min
+        def _latest_val(d):
+            try: return d[max(d, key=lambda k: datetime.strptime(k, '%b %Y'))]
+            except: return 0
+        # Base series: among those with reasonably recent data, the one whose
+        # latest value is biggest (total revenue beats any segment).
+        newest = max(_latest_dt(d) for d in series)
+        recent = [d for d in series if (newest - _latest_dt(d)).days <= 400] or series
+        base = max(recent, key=_latest_val)
+        result = dict(base)
+        for d in series:
+            if d is base: continue
+            common = set(d) & set(result)
+            if common:
+                agree = sum(1 for k in common
+                            if result[k] > 0 and 0.75 <= d[k] / result[k] <= 1.33)
+                if agree < max(1, len(common) // 2):
+                    continue  # inconsistent series (segment tag) — skip
+            for k, v in d.items():
+                result.setdefault(k, v)
         return result
     except: return {}
 
@@ -706,7 +733,7 @@ for ticker, entry in fmp_income_data.items():
                                   reverse=True):
             quarters.append({'fiscalQtrEnd': qk, 'eps': eps_val,
                              'consensusForecast': '', 'percentageSurprise': '',
-                             'dateReported': '', 'revActual': eps_by_qtr.get(qk),
+                             'dateReported': '', 'revActual': None,  # was wrongly copying EPS into revenue
                              'revEstimate': None})
         if quarters:
             history[ticker] = quarters
