@@ -757,14 +757,35 @@ rev_est_data = dict(rev_est_cache)
 eps_est_data = dict(eps_est_cache)
 fmp_est_data = dict(fmp_est_cache)
 
+# Fiscal quarter-end labels per upcoming symbol ('Jun/2026' -> 'Jun 2026') —
+# the template looks estimates up by this key (or '0q' as fallback).
+fqe_by_sym = {}
+for _rows in earnings.values():
+    for _r in _rows:
+        _s = _r.get('symbol', '')
+        _fq = (_r.get('fiscalQuarterEnding') or '').replace('/', ' ')
+        if _s and _fq and _s not in fqe_by_sym:
+            fqe_by_sym[_s] = _fq
+
+def _remap_est(d, sym):
+    """FMP keys are report-month; template needs fiscal-qtr key + '0q'."""
+    out = dict(d)
+    vals = list(d.values())
+    if vals:
+        out['0q'] = vals[0]
+        _fq = fqe_by_sym.get(sym)
+        if _fq:
+            out[_fq] = vals[0]
+    return out
+
 # Merge FMP calendar estimates — in-memory lookups, no per-ticker HTTP calls
 for _t in set(rev_tickers) | set(_fmp_cal_rev) | set(_fmp_cal_eps):
     _rev = _finnhub_rev_estimate_monthly(_t)
     if _rev:
-        rev_est_data[_t] = _rev          # current upcoming estimate (replace)
+        rev_est_data[_t] = _remap_est(_rev, _t)   # current upcoming estimate (replace)
     _eps = _finnhub_eps_estimate(_t)
     if _eps:
-        eps_est_data[_t] = _eps
+        eps_est_data[_t] = _remap_est(_eps, _t)
     _iso = _finnhub_rev_estimate(_t)
     if _iso:
         fmp_est_data.setdefault(_t, {}).update(_iso)  # accumulate snapshots by report date
