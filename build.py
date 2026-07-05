@@ -207,12 +207,20 @@ while chunk_end >= cutoff:
     ranges.append((chunk_start.strftime('%Y-%m-%d'), chunk_end.strftime('%Y-%m-%d')))
     chunk_end = chunk_start - timedelta(days=1)
 
-# Always refresh the most recent range; skip older ones if cached
+# Always refresh the most recent range; re-fetch older ones weekly so
+# epsActual/revenueActual backfill for rows first cached before report day.
 recent_range = ranges[0] if ranges else None
 ranges_to_fetch = []
 for fr, to in ranges:
     cache_key = f'{fr}_{to}'
-    if cache_key not in past_calendar_cached.get('_chunks', {}) or (fr, to) == recent_range:
+    stamp = past_calendar_cached.get('_chunks', {}).get(cache_key)
+    fresh = False
+    if isinstance(stamp, str):
+        try:
+            fresh = (today - datetime.strptime(stamp, '%Y-%m-%d').replace(tzinfo=timezone.utc)).days < 7
+        except:
+            pass
+    if not fresh or (fr, to) == recent_range:
         ranges_to_fetch.append((fr, to))
 
 # Always re-fetch today and yesterday individually for fresh epsActual
@@ -235,7 +243,7 @@ for fr, to in ranges_to_fetch:
             existing = [r for r in past_calendar_cached[dt] if r['symbol'] != row['symbol']]
             existing.append(row)
             past_calendar_cached[dt] = existing
-    chunks_done[f'{fr}_{to}'] = True
+    chunks_done[f'{fr}_{to}'] = today_str  # date-stamped so old chunks refresh weekly
 
 # Fetch today/yesterday individually — always fresh, no cache skip
 for hot_d in hot_dates:
@@ -281,14 +289,14 @@ print(f"  Past earnings after $1B filter: {sum(len(v) for v in past_earnings.val
 recent_14d = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
 seen = set()
 top_tickers = []
-past_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''), iso)
+past_rows_flat = [(mcap_of(r), r.get('symbol', ''), iso)
                   for iso, rows in past_earnings.items() for r in rows]
 for mc, sym, iso in sorted(past_rows_flat, reverse=True):
     if sym and sym not in seen and mc > 1e9 and iso >= recent_14d:
         seen.add(sym)
         top_tickers.append(sym)
 # Priority 2: top upcoming tickers by mcap
-all_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
+all_rows_flat = [(mcap_of(r), r.get('symbol', ''))
                  for rows in earnings.values() for r in rows]
 for mc, sym in sorted(all_rows_flat, reverse=True):
     if sym and sym not in seen and mc > 1e9:
