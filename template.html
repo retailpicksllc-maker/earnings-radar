@@ -869,22 +869,26 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
   pane.innerHTML=`${chartHtml}${beatStat}<div class="slides-wrap">${upcomingSlide}${histSlides}</div>`;
   setTimeout(()=>{
     // Precompute per-quarter estimates
-    // Rev: use q.revEstimate if stored; for the most recent quarter only, fall back to '0q' from REV_EST
-    const revEstArr=display.map((q,idx)=>{
+    // Rev: use stored revEstimate; fall back to nearest from REV_EST dict (inc '0q')
+    const revEstArr=display.map(q=>{
       if(q.revEstimate!=null)return q.revEstimate;
-      if(idx===0&&_revEstDict){
-        const v=_revEstDict['0q']??_revEstDict[q.fiscalQtrEnd]??null;
-        return v;
+      if(_revEstDict){
+        const exact=_revEstDict[q.fiscalQtrEnd];
+        if(exact!=null)return exact;
+        const fwd=_revEstDict['0q'];
+        if(fwd!=null)return fwd;
       }
-      return null; // no historical estimate data for older quarters
+      return null;
     });
-    // EPS: use consensusForecast per quarter; fall back to '0q' only for most recent
-    const epsEstArr=display.map((q,idx)=>{
+    // EPS: consensusForecast per quarter is the gold standard; fall back to EPS_EST dict
+    const epsEstArr=display.map(q=>{
       const cf=parseFloat(q.consensusForecast);
       if(!isNaN(cf)&&cf!==0)return cf;
-      if(idx===0&&_epsEstDict){
-        const v=_epsEstDict['0q']??_epsEstDict[q.fiscalQtrEnd]??null;
-        return v;
+      if(_epsEstDict){
+        const exact=_epsEstDict[q.fiscalQtrEnd];
+        if(exact!=null)return exact;
+        const fwd=_epsEstDict['0q'];
+        if(fwd!=null)return fwd;
       }
       return null;
     });
