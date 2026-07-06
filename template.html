@@ -889,9 +889,10 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
   const gW=cW/N;
   const BASE=PAD.t+cH;
   const revVals=pts.map(q=>Math.max(q.revActual!=null?q.revActual:(_nearestRev(_revDict,q.fiscalQtrEnd)||0),0));
-  // Use "0q" forward estimate as the rightmost (upcoming) bar if available
+  // Per-quarter revenue estimates (not a single fwd value for every bar)
+  const revEstVals=pts.map(q=>q.revEstimate!=null?q.revEstimate:(_nearestRev(_revEstDict,q.fiscalQtrEnd)||0));
   const fwdEst=(_revEstDict&&(Object.values(_revEstDict)[0]||0))||0;
-  const maxRev=Math.max(...revVals,fwdEst,1);
+  const maxRev=Math.max(...revVals,...revEstVals,fwdEst,1);
   function rrect(x,y,w,h,r){
     if(h<1){h=1;r=0;}r=Math.min(r,w/2,h/2);
     ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);
@@ -921,8 +922,9 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
     const revSurp=parseFloat(q.percentageSurprise)||0;
     const revHasSurp=q.percentageSurprise!==''&&q.percentageSurprise!=null&&!isNaN(parseFloat(q.percentageSurprise));
     const revBeat=revHasSurp&&revSurp>0;
-    // Est bar left (grey) — same forward estimate for every slot
-    if(fwdEst>0){const h=Math.max((fwdEst/maxRev)*cH,2);ctx.fillStyle='rgba(156,163,175,0.9)';rrect(estX,BASE-h,bW,h,2);ctx.fill();}
+    // Est bar left (grey) — per-quarter estimate
+    const qRevEst=revEstVals[i];
+    if(qRevEst>0){const h=Math.max((qRevEst/maxRev)*cH,2);ctx.fillStyle='rgba(156,163,175,0.9)';rrect(estX,BASE-h,bW,h,2);ctx.fill();}
     // Actual bar right (green=beat / red=miss)
     if(rev>0){const h=Math.max((rev/maxRev)*cH,2);ctx.fillStyle=revHasSurp?(revBeat?'rgba(34,197,94,.88)':'rgba(239,68,68,.84)'):'rgba(59,130,246,.85)';rrect(actX,BASE-h,bW,h,2);ctx.fill();}
     const lbl=qLbl(q.fiscalQtrEnd||'');
@@ -957,8 +959,17 @@ function drawEpsChart(sym,data){
   const gW=cW/N;
   const epsActuals=pts.map(q=>parseFloat(q.eps)||0);
   const _epsEstFwd=(typeof EPS_EST!=='undefined'&&EPS_EST[sym])?(Object.values(EPS_EST[sym])[0]||0):0;
-  const epsEsts=pts.map(q=>parseFloat(q.consensusForecast)||_epsEstFwd);
-  const allVals=[...epsActuals,...epsEsts];
+  // Per-quarter EPS estimates: prefer consensusForecast, then EPS_EST by quarter key, avoid fwd fallback for old quarters
+  const epsEsts=pts.map(q=>{
+    const cf=parseFloat(q.consensusForecast);
+    if(!isNaN(cf)&&cf!==0)return cf;
+    if(typeof EPS_EST!=='undefined'&&EPS_EST[sym]){
+      const qe=EPS_EST[sym][q.fiscalQtrEnd];
+      if(qe!=null)return qe;
+    }
+    return null; // don't apply fwd estimate to historical bars
+  });
+  const allVals=[...epsActuals,...epsEsts.filter(v=>v!=null)];
   const minV=Math.min(...allVals,0);
   const maxV=Math.max(...allVals,0.01);
   const range=maxV-minV||0.01;
@@ -1006,8 +1017,8 @@ function drawEpsChart(sym,data){
     const bW=Math.max((grpW-gap)/2,2);
     const estX=cx-grpW/2;
     const actX=estX+bW+gap;
-    // Estimate bar (left, gray-purple)
-    if(est!==0){ctx.fillStyle='rgba(156,163,175,0.9)';bar(estX,bW,est,2);ctx.fill();}
+    // Estimate bar (left, gray-purple) — only draw if we have a real estimate for this quarter
+    if(est!=null&&est!==0){ctx.fillStyle='rgba(156,163,175,0.9)';bar(estX,bW,est,2);ctx.fill();}
     // Actual bar (right, green/red)
     if(eps!==0){ctx.fillStyle='rgba(59,130,246,.85)';bar(actX,bW,eps,2);ctx.fill();}
     const lbl=qLbl(q.fiscalQtrEnd||'');
