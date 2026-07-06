@@ -297,8 +297,12 @@ past_earnings = {}
 for d, rows in past_calendar_cached.items():
     if d == '_chunks' or not rows:
         continue
-    # Only keep rows that are NOT in upcoming earnings (avoids Finnhub pre-placing future reports on wrong past dates)
-    clean_rows = [r for r in rows if r.get('symbol','') not in upcoming_syms]
+    # For today: allow tickers in upcoming_syms if they have epsActual set (already reported)
+    # For past dates: filter out upcoming tickers (avoids Finnhub pre-placing future reports on wrong dates)
+    if d == today_str:
+        clean_rows = [r for r in rows if r.get('symbol','') not in upcoming_syms or r.get('epsActual') is not None]
+    else:
+        clean_rows = [r for r in rows if r.get('symbol','') not in upcoming_syms]
     if clean_rows:
         past_earnings[d] = clean_rows
 print(f"  Past earnings: {len(past_earnings)} days with data (filtered pre-placed upcoming tickers)")
