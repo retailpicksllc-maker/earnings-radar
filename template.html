@@ -868,12 +868,19 @@ function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
 
   pane.innerHTML=`${chartHtml}${beatStat}<div class="slides-wrap">${upcomingSlide}${histSlides}</div>`;
   setTimeout(()=>{
-    if(hasRev)drawRevChart(sym,display,_revDict,_revEstDict);
-    drawEpsChart(sym,display);
+    // Precompute per-quarter estimates using _revEst/_epsEst (handles '0q' keys)
+    const revEstArr=display.map(q=>q.revEstimate!=null?q.revEstimate:(_revEst(q.fiscalQtrEnd)||null));
+    const epsEstArr=display.map(q=>{
+      const cf=parseFloat(q.consensusForecast);
+      if(!isNaN(cf)&&cf!==0)return cf;
+      return _epsEst(q.fiscalQtrEnd)??null;
+    });
+    if(hasRev)drawRevChart(sym,display,_revDict,revEstArr);
+    drawEpsChart(sym,display,epsEstArr);
   },60);
 }
 
-function drawRevChart(sym,data,_revDict,_revEstDict){
+function drawRevChart(sym,data,_revDict,revEstArr){
   const canvas=document.getElementById('ec_rev_'+sym);
   if(!canvas)return;
   const ctx=canvas.getContext('2d');
@@ -890,9 +897,8 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
   const BASE=PAD.t+cH;
   const revVals=pts.map(q=>Math.max(q.revActual!=null?q.revActual:(_nearestRev(_revDict,q.fiscalQtrEnd)||0),0));
   // Per-quarter revenue estimates (not a single fwd value for every bar)
-  const revEstVals=pts.map(q=>q.revEstimate!=null?q.revEstimate:(_nearestRev(_revEstDict,q.fiscalQtrEnd)||0));
-  const fwdEst=(_revEstDict&&(Object.values(_revEstDict)[0]||0))||0;
-  const maxRev=Math.max(...revVals,...revEstVals,fwdEst,1);
+  const revEstVals=[...revEstArr].reverse().map(v=>v||0);
+  const maxRev=Math.max(...revVals,...revEstVals,1);
   function rrect(x,y,w,h,r){
     if(h<1){h=1;r=0;}r=Math.min(r,w/2,h/2);
     ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);
@@ -923,7 +929,7 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
     const revHasSurp=q.percentageSurprise!==''&&q.percentageSurprise!=null&&!isNaN(parseFloat(q.percentageSurprise));
     const revBeat=revHasSurp&&revSurp>0;
     // Est bar left (grey) — per-quarter estimate
-    const qRevEst=revEstVals[i];
+    const qRevEst=revEstVals[i]||0;
     if(qRevEst>0){const h=Math.max((qRevEst/maxRev)*cH,2);ctx.fillStyle='rgba(156,163,175,0.9)';rrect(estX,BASE-h,bW,h,2);ctx.fill();}
     // Actual bar right (green=beat / red=miss)
     if(rev>0){const h=Math.max((rev/maxRev)*cH,2);ctx.fillStyle=revHasSurp?(revBeat?'rgba(34,197,94,.88)':'rgba(239,68,68,.84)'):'rgba(59,130,246,.85)';rrect(actX,BASE-h,bW,h,2);ctx.fill();}
@@ -943,7 +949,7 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
   ctx.fillText('Miss',PAD.l+78,PAD.t-4);
 }
 
-function drawEpsChart(sym,data){
+function drawEpsChart(sym,data,epsEstArr){
   const canvas=document.getElementById('ec_eps_'+sym);
   if(!canvas)return;
   const ctx=canvas.getContext('2d');
@@ -958,17 +964,7 @@ function drawEpsChart(sym,data){
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
   const gW=cW/N;
   const epsActuals=pts.map(q=>parseFloat(q.eps)||0);
-  const _epsEstFwd=(typeof EPS_EST!=='undefined'&&EPS_EST[sym])?(Object.values(EPS_EST[sym])[0]||0):0;
-  // Per-quarter EPS estimates: prefer consensusForecast, then EPS_EST by quarter key, avoid fwd fallback for old quarters
-  const epsEsts=pts.map(q=>{
-    const cf=parseFloat(q.consensusForecast);
-    if(!isNaN(cf)&&cf!==0)return cf;
-    if(typeof EPS_EST!=='undefined'&&EPS_EST[sym]){
-      const qe=EPS_EST[sym][q.fiscalQtrEnd];
-      if(qe!=null)return qe;
-    }
-    return null; // don't apply fwd estimate to historical bars
-  });
+  const epsEsts=[...epsEstArr].reverse();
   const allVals=[...epsActuals,...epsEsts.filter(v=>v!=null)];
   const minV=Math.min(...allVals,0);
   const maxV=Math.max(...allVals,0.01);
