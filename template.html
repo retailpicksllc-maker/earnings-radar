@@ -200,23 +200,21 @@ function render(){
     const before=uniq.filter(r=>sessionOf(r.time)==='bmo');
     const after=uniq.filter(r=>sessionOf(r.time)==='amc');
     const tbd=uniq.filter(r=>sessionOf(r.time)==='tbd');
-    // Cap the whole day at 11 tiles + a "+N" box (only when there are >12 total).
-    const cap = uniq.length>12 ? 11 : Infinity;
-    let shown=0;
+    // Each session (Before Open / After Close / TBD) shows up to 11 tiles + its own "+N" box.
     const section=(items,cls,labelHtml)=>{
       if(!items.length) return '';
-      const labHide = shown>=cap ? ' xhide' : '';
-      let tiles='';
+      const cap = items.length>12 ? 11 : Infinity;
+      let shown=0, tiles='';
       for(const r of items){ const hide=shown>=cap; if(!hide)shown++; tiles+=tileHTML(r,hide); }
-      const lab = labelHtml ? `<div class="sesshead${cls}${labHide}">${labelHtml}</div>` : '';
-      return lab+`<div class="tiles">${tiles}</div>`;
+      const lab = labelHtml ? `<div class="sesshead${cls}">${labelHtml}</div>` : '';
+      const more = items.length>12 ? `<div class="tiles"><div class="morebox"><div class="tile moretile">+${items.length-11}</div><div class="tick2">more</div></div></div>` : '';
+      return `<div class="sess">${lab}<div class="tiles">${tiles}</div>${more}</div>`;
     };
     let body='';
     body+=section(before,' am','<span class="ic">☀︎</span>Before Open');
     body+=section(after,' pm','<span class="ic">☾</span>After Close');
     body+=section(tbd,'', (before.length||after.length)?'<span class="ic">◷</span>Time TBD':'');
     if(!uniq.length) body='<div class="emptyday">—</div>';
-    if(uniq.length>12){ const n=uniq.length-11; body+=`<div class="tiles"><div class="morebox"><div class="tile moretile">+${n}</div><div class="tick2">more</div></div></div>`; }
     html+=`<div class="daycol"><div class="dayhead ${dISO===todayISO?'today':''}">${days[i]} <span class="d">${d.getDate()}</span></div>${body}</div>`;
   }
   $('#calGrid').innerHTML=html;
@@ -267,7 +265,7 @@ function openDetail(sym,date){
 }
 function closeDetail(){$('#overlay').classList.remove('on');}
 $('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeDetail();});
-$('#calGrid').addEventListener('click',e=>{const mb=e.target.closest('.morebox');if(mb){const col=mb.closest('.daycol');if(col)col.querySelectorAll('.xhide').forEach(x=>x.classList.remove('xhide'));mb.remove();return;}const w=e.target.closest('.tilewrap');if(w)openDetail(w.getAttribute('data-sym'),w.getAttribute('data-date'));});
+$('#calGrid').addEventListener('click',e=>{const mb=e.target.closest('.morebox');if(mb){const box=mb.closest('.sess')||mb.closest('.daycol');if(box)box.querySelectorAll('.xhide').forEach(x=>x.classList.remove('xhide'));mb.remove();return;}const w=e.target.closest('.tilewrap');if(w)openDetail(w.getAttribute('data-sym'),w.getAttribute('data-date'));});
 
 $('#prevWk').onclick=()=>{weekOffset--;render();};
 $('#nextWk').onclick=()=>{weekOffset++;render();};
