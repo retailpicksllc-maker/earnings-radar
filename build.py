@@ -335,14 +335,14 @@ for mc, sym in sorted(all_rows_flat, reverse=True):
     if sym and sym not in seen and mc > 1e9:
         seen.add(sym)
         top_tickers.append(sym)
-    if len(top_tickers) >= 300:
+    if len(top_tickers) >= 550:
         break
-# Priority 3: historical past by mcap up to 400 total
+# Priority 3: historical past by mcap up to 650 total
 for mc, sym, iso in sorted(past_rows_flat, reverse=True):
-    if sym and sym not in seen and mc > 10e9:
+    if sym and sym not in seen and mc > 5e9:
         seen.add(sym)
         top_tickers.append(sym)
-    if len(top_tickers) >= 400:
+    if len(top_tickers) >= 650:
         break
 
 # rev_tickers: for revenue fetch — all recent calendar tickers (last 28 days + upcoming)
@@ -1261,6 +1261,19 @@ if ALPHA_KEY:
                     rev_by[lbl] = round(tr / 1e6, 1)
         except Exception:
             pass
+        # Historical revenue (and EPS) estimates from EARNINGS_ESTIMATES (per fiscal quarter).
+        revest_by = {}
+        try:
+            est = _av_get('EARNINGS_ESTIMATES', sym)
+            for e in (est.get('estimates') or []):
+                if e.get('horizon') != 'fiscal quarter':
+                    continue
+                lbl = _av_month_year(e.get('date', ''))
+                rv = _av_float(e.get('revenue_estimate_average'))
+                if lbl and rv is not None:
+                    revest_by[lbl] = round(rv / 1e6, 1)
+        except Exception:
+            pass
         out = []
         for q in qe[:12]:
             lbl = _av_month_year(q.get('fiscalDateEnding', ''))
@@ -1272,7 +1285,7 @@ if ALPHA_KEY:
                 'consensusForecast':  _av_float(q.get('estimatedEPS')),
                 'percentageSurprise': _av_float(q.get('surprisePercentage')),
                 'revActual':          rev_by.get(lbl),
-                'revEstimate':        None,
+                'revEstimate':        revest_by.get(lbl),
                 'reportTime':         q.get('reportTime', ''),
             })
         return sym, out
@@ -1283,14 +1296,14 @@ if ALPHA_KEY:
     for _d in sorted(earnings.keys()):
         for _r in earnings[_d]:
             if _r.get('symbol'): _prio.append(_r['symbol'])
-    for _d in sorted(past_earnings.keys(), reverse=True)[:12]:
+    for _d in sorted(past_earnings.keys(), reverse=True)[:45]:  # ~2 months of past reporters
         for _r in past_earnings[_d]:
             if _r.get('symbol'): _prio.append(_r['symbol'])
     _seen = set(); _prio = [t for t in _prio if not (t in _seen or _seen.add(t))]
     def _av_stale(t):
         m = _av_meta.get(t)
-        return (not m) or (_now_ts - m.get('ts', 0) > 6 * 3600)
-    _to_fetch = [t for t in _prio if _av_stale(t)][:25]  # ~50 AV calls/build, paced
+        return (not m) or (_now_ts - m.get('ts', 0) > 12 * 3600)
+    _to_fetch = [t for t in _prio if _av_stale(t)][:40]  # 3 AV calls/ticker, paced under 75/min
 
     print(f"Alpha Vantage enrich: {len(_to_fetch)} tickers (of {len(_prio)} candidates)")
     _av_ok = 0
