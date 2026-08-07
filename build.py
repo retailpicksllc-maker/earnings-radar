@@ -1074,13 +1074,16 @@ def fetch_news(ticker):
     except:
         return ticker, []
 
-news_tickers = list(history.keys())
+news_tickers = list(history.keys())[:450]
 print(f"Fetching news for {len(news_tickers)} tickers...")
 news = {}
-with ThreadPoolExecutor(max_workers=30) as ex:
-    for ticker, items in ex.map(fetch_news, news_tickers, timeout=90):
-        if items:
-            news[ticker] = items
+try:
+    with ThreadPoolExecutor(max_workers=30) as ex:
+        for ticker, items in ex.map(fetch_news, news_tickers, timeout=150):
+            if items:
+                news[ticker] = items
+except Exception as e:
+    print(f"  News fetch stopped early ({e}); continuing with {len(news)} tickers")
 print(f"  Got news for {len(news)} tickers")
 
 # ── 4. Stock meta lookup ──────────────────────────────────────────────────────
