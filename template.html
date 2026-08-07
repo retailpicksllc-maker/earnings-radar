@@ -210,10 +210,13 @@ function render(){
       const more = items.length>12 ? `<div class="tiles"><div class="morebox"><div class="tile moretile">+${items.length-11}</div><div class="tick2">more</div></div></div>` : '';
       return `<div class="sess">${lab}<div class="tiles">${tiles}</div>${more}</div>`;
     };
+    const isPast = dISO < todayISO;  // already-reported day
     let body='';
     body+=section(before,' am','<span class="ic">☀︎</span>Before Open');
     body+=section(after,' pm','<span class="ic">☾</span>After Close');
-    if(!(before.length||after.length)) body='<div class="emptyday">—</div>';
+    // Past dates: show already-reported companies whose session (BMO/AMC) wasn't recorded, under "Reported". Upcoming stays strictly confirmed.
+    if(isPast) body+=section(tbd,'','<span class="ic">✓</span>Reported');
+    if(!(before.length||after.length||(isPast&&tbd.length))) body='<div class="emptyday">—</div>';
     html+=`<div class="daycol"><div class="dayhead ${dISO===todayISO?'today':''}">${days[i]} <span class="d">${d.getDate()}</span></div>${body}</div>`;
   }
   $('#calGrid').innerHTML=html;
