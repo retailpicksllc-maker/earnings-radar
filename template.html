@@ -209,19 +209,25 @@ function render(){
 }
 
 // ---- detail modal ----
-function fmtEps(v){return (v===null||v===undefined||v==='')?'—':`$${(+v).toFixed(2)}`;}
-function fmtRevM(m){if(m===null||m===undefined||m==='')return '—';m=+m;return m>=1000?`$${(m/1000).toFixed(1)}B`:`$${m.toFixed(0)}M`;}
+function numv(v){if(v===null||v===undefined||v==='')return null;const n=+String(v).replace(/[$,]/g,'');return isNaN(n)?null:n;}
+function fmtEps(v){const n=numv(v);return n===null?'—':`$${n.toFixed(2)}`;}
+function fmtRevM(v){let m=numv(v);if(m===null)return '—';return m>=1000?`$${(m/1000).toFixed(1)}B`:`$${m.toFixed(0)}M`;}
 function surprise(a,e){if(a==null||e==null||e===''||e==0)return '';const p=((a-e)/Math.abs(e))*100;return `${p>=0?'+':''}${p.toFixed(1)}%`;}
 function openDetail(sym,date){
   const rowObj=(DATA.find(r=>r.symbol===sym&&r.date===date)||{}).row||{};
   const name=rowObj.name||(META[sym]&&META[sym].name)||sym;
-  const epsE=rowObj.eps, epsA=rowObj.epsActual, revE=rowObj.revenueEstimate, revA=rowObj.revenueActual;
-  const epsS=surprise(epsA,epsE), revS=surprise(revA,revE);
   const col=s=>s.startsWith('+')?'var(--green)':(s?'var(--red)':'var(--muted)');
   let hist=(ESTACT[sym]&&ESTACT[sym].history&&ESTACT[sym].history.length)?ESTACT[sym].history.slice():[];
-  if(!hist.length)hist=(HISTORY[sym]||[]).map(h=>({qtr:h.fiscalQtrEnd,epsEst:(h.consensusForecast!=null&&h.consensusForecast!==''?+h.consensusForecast:null),epsAct:h.eps,revEst:h.revEstimate,revAct:h.revActual}));
+  if(!hist.length)hist=(HISTORY[sym]||[]).map(h=>({qtr:h.fiscalQtrEnd,epsEst:numv(h.consensusForecast),epsAct:numv(h.eps),revEst:numv(h.revEstimate),revAct:numv(h.revActual)}));
   hist=hist.slice(0,8);
-  const reported=(epsA!=null&&epsA!=='')||(revA!=null&&revA!=='');
+  const h0=hist[0]||{};
+  let pastDate=false; try{pastDate=new Date(date+'T23:59:59')<new Date();}catch(e){}
+  let epsE=numv(rowObj.eps), epsA=numv(rowObj.epsActual), revE=numv(rowObj.revenueEstimate), revA=numv(rowObj.revenueActual);
+  if(epsE==null&&typeof EPS_EST!=='undefined'&&EPS_EST[sym])epsE=numv(EPS_EST[sym]['0q']!=null?EPS_EST[sym]['0q']:Object.values(EPS_EST[sym])[0]);
+  if(revE==null&&typeof REV_EST!=='undefined'&&REV_EST[sym])revE=numv(REV_EST[sym]['0q']!=null?REV_EST[sym]['0q']:Object.values(REV_EST[sym])[0]);
+  const reported=(epsA!=null)||(revA!=null)||pastDate;
+  if(reported){if(epsE==null)epsE=numv(h0.epsEst);if(epsA==null)epsA=numv(h0.epsAct);if(revE==null)revE=numv(h0.revEst);if(revA==null)revA=numv(h0.revAct);}
+  const epsS=surprise(epsA,epsE), revS=surprise(revA,revE);
   const news=(NEWS[sym]||[]).slice(0,5);
   const initial=(sym[0]||'?').toUpperCase();
   $('#sheet').innerHTML=`
