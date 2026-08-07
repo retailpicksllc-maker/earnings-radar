@@ -21,6 +21,7 @@ print("Starting build...")
 
 # ── 1. Earnings calendar (Finnhub) ───────────────────────────────────────────
 FINNHUB_KEY = os.environ.get('FINNHUB_API_KEY', '')
+ALPHA_KEY   = os.environ.get('ALPHA_KEY', '')  # Alpha Vantage premium (deep EPS est/act history + revenue actuals)
 
 def finnhub_get(path):
     url = f'https://finnhub.io/api/v1{path}&token={FINNHUB_KEY}'
@@ -1213,6 +1214,108 @@ if in_ext and price_syms:
         print(f"  WARN YF ext fetch: {e}")
     print(f"  After extended-hours update: {len(price_data)} tickers")
 
+# ── 4b. Alpha Vantage enrichment: deep EPS estimate/actual/surprise history +
+#        revenue actuals. Merged into `history` so the detail modal shows a full
+#        estimate-vs-actual table. Cached + capped + rate-limited; never fatal. ──
+est_act = {}  # reserved for future forward-estimate injection (__ESTACT_JS__)
+if ALPHA_KEY:
+    import time as _avt
+    AV_META_FILE = 'data/av_meta.json'
+    _av_meta = {}
+    try:
+        with open(AV_META_FILE) as _f: _av_meta = json.load(_f)
+    except Exception: pass
+
+    def _av_get(fn, sym):
+        url = f'https://www.alphavantage.co/query?function={fn}&symbol={sym}&apikey={ALPHA_KEY}'
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read())
+
+    def _av_month_year(iso):
+        try: return datetime.strptime((iso or '')[:10], '%Y-%m-%d').strftime('%b %Y')
+        except Exception: return None
+
+    def _av_float(x):
+        try:
+            if x in (None, '', 'None', 'none'): return None
+            return float(x)
+        except Exception: return None
+
+    def _av_enrich(sym):
+        """Return sym -> list of quarter dicts (history schema) from AV, newest first."""
+        try:
+            earn = _av_get('EARNINGS', sym)
+        except Exception:
+            return sym, None
+        qe = earn.get('quarterlyEarnings') or []
+        if not qe:
+            return sym, None
+        rev_by = {}
+        try:
+            inc = _av_get('INCOME_STATEMENT', sym)
+            for q in (inc.get('quarterlyReports') or [])[:16]:
+                lbl = _av_month_year(q.get('fiscalDateEnding', ''))
+                tr = _av_float(q.get('totalRevenue'))
+                if lbl and tr is not None:
+                    rev_by[lbl] = round(tr / 1e6, 1)
+        except Exception:
+            pass
+        out = []
+        for q in qe[:12]:
+            lbl = _av_month_year(q.get('fiscalDateEnding', ''))
+            if not lbl: continue
+            out.append({
+                'fiscalQtrEnd':       lbl,
+                'dateReported':       q.get('reportedDate', ''),
+                'eps':                _av_float(q.get('reportedEPS')),
+                'consensusForecast':  _av_float(q.get('estimatedEPS')),
+                'percentageSurprise': _av_float(q.get('surprisePercentage')),
+                'revActual':          rev_by.get(lbl),
+                'revEstimate':        None,
+                'reportTime':         q.get('reportTime', ''),
+            })
+        return sym, out
+
+    # Prioritize tickers the user actually sees: upcoming reporters, then recent.
+    _now_ts = int(today.timestamp())
+    _prio = []
+    for _d in sorted(earnings.keys()):
+        for _r in earnings[_d]:
+            if _r.get('symbol'): _prio.append(_r['symbol'])
+    for _d in sorted(past_earnings.keys(), reverse=True)[:12]:
+        for _r in past_earnings[_d]:
+            if _r.get('symbol'): _prio.append(_r['symbol'])
+    _seen = set(); _prio = [t for t in _prio if not (t in _seen or _seen.add(t))]
+    def _av_stale(t):
+        m = _av_meta.get(t)
+        return (not m) or (_now_ts - m.get('ts', 0) > 6 * 3600)
+    _to_fetch = [t for t in _prio if _av_stale(t)][:25]  # ~50 AV calls/build, paced
+
+    print(f"Alpha Vantage enrich: {len(_to_fetch)} tickers (of {len(_prio)} candidates)")
+    _av_ok = 0
+    for _sym in _to_fetch:
+        try:
+            _s, _rows = _av_enrich(_sym)
+            if _rows:
+                _existing = {q.get('fiscalQtrEnd'): q for q in history.get(_s, [])}
+                for _row in _rows:  # carry forward existing revenue est/act if AV lacks it
+                    _ex = _existing.get(_row['fiscalQtrEnd'], {})
+                    if _row.get('revEstimate') is None: _row['revEstimate'] = _ex.get('revEstimate')
+                    if _row.get('revActual')   is None: _row['revActual']   = _ex.get('revActual')
+                history[_s] = _rows
+                _av_ok += 1
+            _av_meta[_sym] = {'ts': _now_ts}
+        except Exception as _e:
+            print(f"  AV enrich {_sym}: {_e}")
+        _avt.sleep(0.85)  # keep under 75 req/min
+    print(f"  Alpha Vantage enriched {_av_ok} tickers")
+    try:
+        os.makedirs('data', exist_ok=True)
+        with open(AV_META_FILE, 'w') as _f: json.dump(_av_meta, _f)
+    except Exception as _e:
+        print(f"  WARN av_meta save: {_e}")
+
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
 
@@ -1232,6 +1335,7 @@ output = (template
     .replace('__EPS_EST_JS__', js_safe(eps_est_data))
     .replace('__NEWS_JS__',     js_safe(news))
     .replace('__META_JS__',     js_safe(stock_meta))
+    .replace('__ESTACT_JS__',   js_safe(est_act))
     .replace('__PRICES_JS__',     js_safe(price_data))
     .replace('__MKTCAP_JS__',    js_safe(mktcap_cache))
     .replace('__FH_KEY_JS__',   js_safe(FINNHUB_KEY))
