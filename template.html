@@ -213,8 +213,7 @@ function render(){
     let body='';
     body+=section(before,' am','<span class="ic">☀︎</span>Before Open');
     body+=section(after,' pm','<span class="ic">☾</span>After Close');
-    body+=section(tbd,'', (before.length||after.length)?'<span class="ic">◷</span>Time TBD':'');
-    if(!uniq.length) body='<div class="emptyday">—</div>';
+    if(!(before.length||after.length)) body='<div class="emptyday">—</div>';
     html+=`<div class="daycol"><div class="dayhead ${dISO===todayISO?'today':''}">${days[i]} <span class="d">${d.getDate()}</span></div>${body}</div>`;
   }
   $('#calGrid').innerHTML=html;
