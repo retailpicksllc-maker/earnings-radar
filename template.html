@@ -83,6 +83,15 @@
   .seclabel{font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;margin:14px 0 8px}
   .hrow{display:flex;align-items:center;gap:10px;font-size:12.5px;padding:7px 0;border-bottom:1px solid var(--border2)}
   .hrow .q{width:70px;color:var(--muted);font-weight:700}
+  .statusline{font-size:12px;font-weight:700;margin:-6px 0 12px;display:flex;align-items:center;gap:7px}
+  .statusline .dot{width:8px;height:8px;border-radius:50%}
+  .htable{border:1px solid var(--border2);border-radius:12px;overflow:hidden}
+  .htable .r{display:grid;grid-template-columns:64px 1fr 1fr 1fr 1fr;gap:6px;padding:8px 10px;font-size:12px;align-items:center}
+  .htable .r+.r{border-top:1px solid var(--border2)}
+  .htable .hh{background:rgba(255,255,255,.05);font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+  .htable .q{color:var(--muted);font-weight:800}
+  .htable .r span{text-align:right} .htable .r .q{text-align:left}
+  .htable .now{background:rgba(47,107,255,.12)}
   .news a{display:block;padding:8px 0;border-bottom:1px solid var(--border2)}
   .news .t{font-size:13px;font-weight:600} .news .m{font-size:11px;color:var(--muted);margin-top:2px}
 </style>
@@ -120,6 +129,7 @@ const REV_EST       = __REV_EST_JS__;
 const EPS_EST       = __EPS_EST_JS__;
 const NEWS          = __NEWS_JS__;
 const META          = __META_JS__;
+const ESTACT        = (typeof __ESTACT_JS__ !== 'undefined') ? __ESTACT_JS__ : {};
 const BUILT_AT      = __BUILT_AT__;
 const LOGO_TOKEN    = "pk_IaCPzNPATUWzZrN-vHTv1g";
 
@@ -144,6 +154,7 @@ let weekOffset = 0;
 function monday(o){const t=new Date();const wd=(t.getDay()+6)%7;const m=new Date(t);m.setDate(t.getDate()-wd+o*7);m.setHours(0,0,0,0);return m;}
 const iso = d => { const z=new Date(d.getTime()-d.getTimezoneOffset()*60000); return z.toISOString().slice(0,10); };
 const fmtShort = d => d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+const fmtDay = s => {try{const d=new Date(s+'T12:00:00');return d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});}catch(e){return s;}};
 function weekLabel(o){return o===0?'This week':o===-1?'Last week':o===1?'Next week':(o<0?o+' weeks':'+'+o+' weeks');}
 
 const MONO=['#2F6BFF','#1547C4','#3B82F6','#2563EB','#1D4ED8','#0EA5E9'];
@@ -181,6 +192,7 @@ function render(){
   for(let i=0;i<5;i++){
     const d=new Date(m); d.setDate(m.getDate()+i); const dISO=iso(d);
     const list=rows.filter(r=>r.date===dISO);
+    // de-dupe by symbol
     const seen=new Set(); const uniq=list.filter(r=>seen.has(r.symbol)?false:seen.add(r.symbol));
     const before=uniq.filter(r=>sessionOf(r.time)==='bmo');
     const after=uniq.filter(r=>sessionOf(r.time)==='amc');
@@ -206,7 +218,10 @@ function openDetail(sym,date){
   const epsE=rowObj.eps, epsA=rowObj.epsActual, revE=rowObj.revenueEstimate, revA=rowObj.revenueActual;
   const epsS=surprise(epsA,epsE), revS=surprise(revA,revE);
   const col=s=>s.startsWith('+')?'var(--green)':(s?'var(--red)':'var(--muted)');
-  const hist=(HISTORY[sym]||[]).slice(0,6);
+  let hist=(ESTACT[sym]&&ESTACT[sym].history&&ESTACT[sym].history.length)?ESTACT[sym].history.slice():[];
+  if(!hist.length)hist=(HISTORY[sym]||[]).map(h=>({qtr:h.fiscalQtrEnd,epsEst:(h.consensusForecast!=null&&h.consensusForecast!==''?+h.consensusForecast:null),epsAct:h.eps,revEst:h.revEstimate,revAct:h.revActual}));
+  hist=hist.slice(0,8);
+  const reported=(epsA!=null&&epsA!=='')||(revA!=null&&revA!=='');
   const news=(NEWS[sym]||[]).slice(0,5);
   const initial=(sym[0]||'?').toUpperCase();
   $('#sheet').innerHTML=`
@@ -215,13 +230,15 @@ function openDetail(sym,date){
       <div><h2>${esc(sym)}</h2><div class="nm">${esc(name)}</div></div>
       <button class="x" onclick="closeDetail()">✕</button>
     </div>
+    <div class="statusline"><span class="dot" style="background:${reported?'var(--green)':'var(--sun)'}"></span>${reported?('Reported'+(date?(' · '+fmtDay(date)):'')):('Estimates · reports '+(date?fmtDay(date):'soon'))}</div>
+    <div class="seclabel">${reported?'Most recent report':'Consensus estimates'}</div>
     <div class="statrow">
       <div class="statbox"><div class="l">EPS estimate</div><div class="v">${fmtEps(epsE)}</div></div>
       <div class="statbox"><div class="l">EPS actual</div><div class="v">${fmtEps(epsA)}</div><div class="s" style="color:${col(epsS)}">${epsS}</div></div>
       <div class="statbox"><div class="l">Revenue estimate</div><div class="v">${fmtRevM(revE)}</div></div>
       <div class="statbox"><div class="l">Revenue actual</div><div class="v">${fmtRevM(revA)}</div><div class="s" style="color:${col(revS)}">${revS}</div></div>
     </div>
-    ${hist.length?`<div class="seclabel">Past quarters</div>${hist.map(h=>{const s=h.percentageSurprise?`${(+h.percentageSurprise>=0?'+':'')}${h.percentageSurprise}%`:'';return `<div class="hrow"><span class="q">${esc(h.fiscalQtrEnd||'')}</span><span>EPS ${fmtEps(h.eps)}</span><span style="color:var(--muted)">est ${h.consensusForecast?('$'+h.consensusForecast):'—'}</span><span style="margin-left:auto;color:${(+h.percentageSurprise>=0)?'var(--green)':'var(--red)'}">${s}</span></div>`;}).join('')}`:''}
+    ${hist.length?`<div class="seclabel">Estimate vs actual — history</div><div class="htable"><div class="r hh"><span class="q">Quarter</span><span>EPS est</span><span>EPS act</span><span>Rev est</span><span>Rev act</span></div>${hist.map((h,i)=>{const eS=surprise(h.epsAct,h.epsEst),rS=surprise(h.revAct,h.revEst);return `<div class="r${i===0&&reported?' now':''}"><span class="q">${esc(h.qtr||'')}</span><span>${fmtEps(h.epsEst)}</span><span style="color:${col(eS)}">${fmtEps(h.epsAct)}</span><span>${fmtRevM(h.revEst)}</span><span style="color:${col(rS)}">${fmtRevM(h.revAct)}</span></div>`;}).join('')}</div>`:''}
     ${news.length?`<div class="seclabel">Latest news</div><div class="news">${news.map(n=>`<a href="${esc(n.link)}" target="_blank" rel="noopener"><div class="t">${esc(n.title)}</div><div class="m">${esc(n.date||'')} ${esc(n.time||'')}</div></a>`).join('')}</div>`:''}
   `;
   upgradeLogos($('#sheet'));
@@ -234,7 +251,7 @@ $('#calGrid').addEventListener('click',e=>{const w=e.target.closest('.tilewrap')
 $('#prevWk').onclick=()=>{weekOffset--;render();};
 $('#nextWk').onclick=()=>{weekOffset++;render();};
 $('#search').oninput=render;
-$('#calNote').textContent = 'Live earnings · updated '+BUILD_AT;
+$('#calNote').textContent = 'Live earnings · updated '+BUILT_AT;
 render();
 </script>
 </body>
