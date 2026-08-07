@@ -43,11 +43,12 @@ jobs:
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          ALPHA_KEY: ${{ secrets.ALPHA_KEY }}
         run: python build.py
 
       - name: Commit and push
         run: |
-          git add docs/index.html data/history_cache.json data/past_calendar_cache.json data/revenue_cache.json data/rev_est_cache.json data/eps_est_cache.json data/fmp_est_cache.json data/marketcap_cache.json data/fmp_income_cache.json || true
+          git add docs/index.html data/history_cache.json data/past_calendar_cache.json data/revenue_cache.json data/rev_est_cache.json data/eps_est_cache.json data/fmp_est_cache.json data/marketcap_cache.json data/fmp_income_cache.json data/av_meta.json || true
           git diff --staged --quiet || git commit -m "Auto-update: $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push || (git pull --rebase origin main && git push)
 
