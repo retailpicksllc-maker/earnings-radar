@@ -55,8 +55,12 @@
   .sesshead{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--text);background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:9px;padding:8px 12px;margin:14px 0 11px}
   .sesshead .ic{font-size:13px;line-height:1}
   .sesshead.am .ic{color:var(--sun)} .sesshead.pm .ic{color:#cfe0ff}
-  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
   @media(max-width:1240px){.tiles{grid-template-columns:repeat(3,1fr)}}
+  .xhide{display:none!important}
+  .morebox{text-align:center;cursor:pointer}
+  .moretile{width:100%;aspect-ratio:1;border-radius:16px;background:var(--card2);border:1px dashed var(--border);display:grid;place-items:center;color:var(--blueLt);font-weight:900;font-size:clamp(16px,2.5vw,22px)}
+  .morebox:hover .moretile{background:rgba(47,107,255,.16)}
   .tilewrap{text-align:center;cursor:pointer}
   .tile{width:100%;aspect-ratio:1;border-radius:16px;background:#fff;display:grid;place-items:center;overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,.35);transition:transform .12s}
   .tilewrap:hover .tile{transform:translateY(-2px)}
@@ -99,7 +103,7 @@
 <body>
 <div class="wrap">
   <div class="calhead">
-    <div class="wm"><div class="wmico"><svg viewBox="0 0 100 150" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path class="leaf-l" d="M50 10 A66 84 0 0 0 50 140 Z"/><path class="leaf-r" d="M50 10 A66 84 0 0 1 50 140 Z"/></svg></div><div class="wmtext"><span>earnings</span><span class="b">radar</span></div></div>
+    <div class="wm"><div class="wmico"><svg viewBox="0 0 120 150" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path class="leaf-l" d="M60 6 C2 42 2 108 60 144 Z"/><path class="leaf-r" d="M60 6 C118 42 118 108 60 144 Z"/></svg></div><div class="wmtext"><span>earnings</span><span class="b">radar</span></div></div>
     <div class="caltitle"><h1>Earnings Calendar</h1><p id="wkTitle">Week of —</p></div>
     <div class="handle">@_EarningsRadar</div>
   </div>
@@ -163,9 +167,9 @@ function logoURL(sym){return `https://img.logo.dev/ticker/${encodeURIComponent(s
 function sessionOf(t){t=(t||'').toLowerCase();if(t.includes('pre'))return 'bmo';if(t.includes('after')||t.includes('post'))return 'amc';return 'tbd';}
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
-function tileHTML(r){
+function tileHTML(r,hide){
   const initial=(r.symbol[0]||'?').toUpperCase();
-  return `<div class="tilewrap" data-sym="${esc(r.symbol)}" data-date="${r.date}">
+  return `<div class="tilewrap${hide?' xhide':''}" data-sym="${esc(r.symbol)}" data-date="${r.date}">
     <div class="tile mono" style="background:${monoColor(r.symbol)}" data-logo="${esc(r.symbol)}">${initial}</div>
     <div class="tick2">${esc(r.symbol)}</div></div>`;
 }
@@ -187,7 +191,6 @@ function render(){
   const rows=DATA.filter(r=>r.date>=from&&r.date<=to&&(!q||r.symbol.toLowerCase().includes(q)||(r.name||'').toLowerCase().includes(q)));
 
   const days=['Mon','Tue','Wed','Thu','Fri']; const todayISO=iso(new Date());
-  const grid=list=>`<div class="tiles">${list.map(tileHTML).join('')}</div>`;
   let html='';
   for(let i=0;i<5;i++){
     const d=new Date(m); d.setDate(m.getDate()+i); const dISO=iso(d);
@@ -197,12 +200,24 @@ function render(){
     const before=uniq.filter(r=>sessionOf(r.time)==='bmo');
     const after=uniq.filter(r=>sessionOf(r.time)==='amc');
     const tbd=uniq.filter(r=>sessionOf(r.time)==='tbd');
+    // Cap the whole day at 11 tiles + a "+N" box (only when there are >12 total).
+    const cap = uniq.length>12 ? 11 : Infinity;
+    let shown=0;
+    const section=(items,cls,labelHtml)=>{
+      if(!items.length) return '';
+      const labHide = shown>=cap ? ' xhide' : '';
+      let tiles='';
+      for(const r of items){ const hide=shown>=cap; if(!hide)shown++; tiles+=tileHTML(r,hide); }
+      const lab = labelHtml ? `<div class="sesshead${cls}${labHide}">${labelHtml}</div>` : '';
+      return lab+`<div class="tiles">${tiles}</div>`;
+    };
     let body='';
-    if(before.length) body+=`<div class="sesshead am"><span class="ic">☀︎</span>Before Open</div>${grid(before)}`;
-    if(after.length)  body+=`<div class="sesshead pm"><span class="ic">☾</span>After Close</div>${grid(after)}`;
-    if(tbd.length){ if(before.length||after.length) body+=`<div class="sesshead"><span class="ic">◷</span>Time TBD</div>`; body+=grid(tbd); }
+    body+=section(before,' am','<span class="ic">☀︎</span>Before Open');
+    body+=section(after,' pm','<span class="ic">☾</span>After Close');
+    body+=section(tbd,'', (before.length||after.length)?'<span class="ic">◷</span>Time TBD':'');
     if(!uniq.length) body='<div class="emptyday">—</div>';
-    html+=`<div><div class="dayhead ${dISO===todayISO?'today':''}">${days[i]} <span class="d">${d.getDate()}</span></div>${body}</div>`;
+    if(uniq.length>12){ const n=uniq.length-11; body+=`<div class="tiles"><div class="morebox"><div class="tile moretile">+${n}</div><div class="tick2">more</div></div></div>`; }
+    html+=`<div class="daycol"><div class="dayhead ${dISO===todayISO?'today':''}">${days[i]} <span class="d">${d.getDate()}</span></div>${body}</div>`;
   }
   $('#calGrid').innerHTML=html;
   upgradeLogos($('#calGrid'));
@@ -252,7 +267,7 @@ function openDetail(sym,date){
 }
 function closeDetail(){$('#overlay').classList.remove('on');}
 $('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeDetail();});
-$('#calGrid').addEventListener('click',e=>{const w=e.target.closest('.tilewrap');if(w)openDetail(w.getAttribute('data-sym'),w.getAttribute('data-date'));});
+$('#calGrid').addEventListener('click',e=>{const mb=e.target.closest('.morebox');if(mb){const col=mb.closest('.daycol');if(col)col.querySelectorAll('.xhide').forEach(x=>x.classList.remove('xhide'));mb.remove();return;}const w=e.target.closest('.tilewrap');if(w)openDetail(w.getAttribute('data-sym'),w.getAttribute('data-date'));});
 
 $('#prevWk').onclick=()=>{weekOffset--;render();};
 $('#nextWk').onclick=()=>{weekOffset++;render();};
