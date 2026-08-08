@@ -11,10 +11,10 @@ import {
 // NOTE: add your Web app's appId from Firebase Console → Project settings → Your apps → Web.
 // Email/password works without it.
 const firebaseConfig = {
-  apiKey: "AIzaSyDrD4J4f7BLyJLUFwTgDmPBVkNAgEtTG30",
+  apiKey: "AIzaSyCkYi_67SreyN6FG7oxrHLypOP0eOC3Efs",
   authDomain: "earnings-radar-f398e.firebaseapp.com",
   projectId: "earnings-radar-f398e",
-  appId: "REPLACE_WITH_WEB_APP_ID"
+  appId: "1:621874989792:web:348614b693e5d261b45e85"
 };
 const auth = getAuth(initializeApp(firebaseConfig));
 
