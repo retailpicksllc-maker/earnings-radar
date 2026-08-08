@@ -239,9 +239,10 @@ function render(){
     let body='';
     body+=section(before,' am','<span class="ic">☀︎</span>Before Open');
     body+=section(after,' pm','<span class="ic">☾</span>After Close');
-    // Past dates: show already-reported companies whose session (BMO/AMC) wasn't recorded, under "Reported". Upcoming stays strictly confirmed.
-    if(isPast) body+=section(tbd,'','<span class="ic">✓</span>Reported');
-    if(!(before.length||after.length||(isPast&&tbd.length))) body='<div class="emptyday">—</div>';
+    // Companies whose exact session (BMO/AMC) isn't recorded: on past dates show them
+    // as "Reported"; on upcoming dates show them under "Time TBD" so the day isn't blank.
+    if(tbd.length) body+=section(tbd,'', isPast ? '<span class="ic">✓</span>Reported' : '<span class="ic">◷</span>Time TBD');
+    if(!(before.length||after.length||tbd.length)) body='<div class="emptyday">—</div>';
     html+=`<div class="daycol"><div class="dayhead ${dISO===todayISO?'today':''}">${days[i]} <span class="d">${d.getDate()}</span></div>${body}</div>`;
   }
   $('#calGrid').innerHTML=html;
@@ -298,6 +299,17 @@ $('#prevWk').onclick=()=>{weekOffset--;render();};
 $('#nextWk').onclick=()=>{weekOffset++;render();};
 $('#search').oninput=render;
 $('#calNote').textContent = 'Live earnings · updated '+BUILT_AT;
+// Open on the first week (this week or later) that actually has upcoming earnings,
+// so a Friday/weekend visit lands on populated days instead of an empty past week.
+(function initWeek(){
+  const todayISO=iso(new Date());
+  const up=DATA.map(r=>r.date).filter(d=>d>=todayISO).sort();
+  if(!up.length) return;
+  const thisMon=monday(0);
+  const t=new Date(up[0]+'T12:00:00'); const twd=(t.getDay()+6)%7;
+  const tMon=new Date(t); tMon.setDate(t.getDate()-twd); tMon.setHours(0,0,0,0);
+  weekOffset=Math.max(0, Math.round((tMon-thisMon)/(7*24*3600*1000)));
+})();
 render();
 </script>
 <script type="module" src="auth.js"></script>
