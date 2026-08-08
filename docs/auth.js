@@ -202,3 +202,18 @@ function bindOpeners(){
 if (document.readyState !== "loading") bindOpeners();
 else document.addEventListener("DOMContentLoaded", bindOpeners);
 window.openAuth = (m) => { if (m) setMode(m); open(); };
+
+// Auto-open the sign-in / create-account popup ~5s after landing on the calendar
+// home page — only when signed out, and once per browser session so it isn't nagging.
+(function autoPrompt(){
+  const isHome = location.pathname.endsWith("/") || /\/index\.html$/.test(location.pathname);
+  if (!isHome) return;
+  try { if (sessionStorage.getItem("er_auth_prompted")) return; } catch (e) {}
+  setTimeout(() => {
+    if (root.classList.contains("on")) return;   // already open
+    if (auth.currentUser) return;                 // already signed in
+    try { sessionStorage.setItem("er_auth_prompted", "1"); } catch (e) {}
+    setMode("signin");
+    open();
+  }, 5000);
+})();
