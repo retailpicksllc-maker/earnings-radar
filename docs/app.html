@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Earnings Radar — The App</title>
+<meta name="description" content="Earnings Radar for iPhone: a live earnings calendar, implied-vs-realized moves, home-screen widgets, Live Activities, and an AI assistant." />
+<link rel="stylesheet" href="site.css" />
+<style>
+  /* hero */
+  .hero{max-width:1200px;margin:0 auto;padding:56px 20px 20px;display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center}
+  @media(max-width:900px){.hero{grid-template-columns:1fr;text-align:center;padding-top:36px}}
+  .hero h1{font-size:clamp(34px,5vw,54px);font-weight:900;letter-spacing:-1px;line-height:1.05;margin:14px 0}
+  .hero h1 .b{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .hero p.sub{color:var(--muted);font-size:18px;max-width:520px;margin:0 auto}
+  .hero .cta-row{display:flex;gap:12px;margin-top:26px;flex-wrap:wrap}
+  @media(max-width:900px){.hero .cta-row{justify-content:center}}
+  .hero .note{color:var(--muted);font-size:13px;margin-top:14px}
+
+  /* phone frame */
+  .phone{--w:300px;width:var(--w);aspect-ratio:1195/2600;margin:0 auto;position:relative;border-radius:44px;padding:11px;
+    background:linear-gradient(160deg,#20263c,#0c1022);box-shadow:0 30px 70px rgba(0,0,0,.55),inset 0 0 0 2px rgba(255,255,255,.06)}
+  .phone::before{content:"";position:absolute;top:16px;left:50%;transform:translateX(-50%);width:34%;height:22px;background:#05070f;border-radius:0 0 16px 16px;z-index:3}
+  .phone img{width:100%;height:100%;object-fit:cover;border-radius:34px;display:block}
+  .hero .phone{--w:330px}
+
+  /* section */
+  section.block{max-width:1200px;margin:0 auto;padding:60px 20px}
+  .block h2{font-size:clamp(26px,3.5vw,38px);font-weight:900;letter-spacing:-.5px;margin:10px 0 6px}
+  .block p.lead{color:var(--muted);font-size:16px;max-width:640px}
+  .feat{display:grid;grid-template-columns:1fr 1fr;gap:44px;align-items:center;margin-top:34px}
+  .feat.rev{direction:rtl}.feat.rev>*{direction:ltr}
+  @media(max-width:820px){.feat,.feat.rev{grid-template-columns:1fr;direction:ltr}}
+  .flist{display:grid;gap:16px;margin-top:18px}
+  .fitem{display:flex;gap:12px;align-items:flex-start}
+  .fitem .ic{width:36px;height:36px;border-radius:10px;background:var(--card2);border:1px solid var(--border2);display:grid;place-items:center;font-size:17px;flex:none}
+  .fitem h4{font-size:16px;font-weight:800}
+  .fitem p{color:var(--muted);font-size:14px}
+
+  /* widget trio */
+  .trio{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:36px}
+  @media(max-width:820px){.trio{grid-template-columns:1fr}}
+  .trio .phone{--w:260px}
+  .trio .cap{text-align:center;margin-top:14px}
+  .trio .cap h4{font-weight:800;font-size:16px}
+  .trio .cap p{color:var(--muted);font-size:13px}
+
+  /* gallery */
+  .gallery{display:flex;gap:20px;overflow-x:auto;padding:10px 4px 22px;scroll-snap-type:x mandatory}
+  .gallery .phone{--w:250px;flex:none;scroll-snap-align:center}
+
+  /* final cta */
+  .final{max-width:900px;margin:20px auto 0;padding:44px 24px;text-align:center;background:radial-gradient(600px 240px at 50% 0%,rgba(47,107,255,.22),transparent 70%),var(--bg2);border:1px solid var(--border);border-radius:22px}
+  .final h2{font-size:clamp(26px,4vw,40px);font-weight:900;letter-spacing:-.5px}
+  .final p{color:var(--muted);font-size:16px;margin:10px auto 22px;max-width:520px}
+  .pill{display:inline-flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--border2);border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:700;color:var(--muted)}
+  .pill .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav"><div class="in">
+  <a class="brand" href="index.html">
+    <span class="wmico"><svg viewBox="0 0 120 150" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path class="leaf-l" d="M60 6 C2 42 2 108 60 144 Z"/><path class="leaf-r" d="M60 6 C118 42 118 108 60 144 Z"/></svg></span>
+    <span>earnings<span class="b">radar</span></span>
+  </a>
+  <div class="links">
+    <a href="index.html" class="hideM">Calendar</a>
+    <a href="app.html" class="active">App</a>
+    <a href="#" id="authTrigger" class="cta">Sign in</a>
+  </div>
+</div></nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div>
+    <span class="eyebrow">iPhone · iOS 16+</span>
+    <h1>Never get caught off guard by <span class="b">earnings</span> again.</h1>
+    <p class="sub">A live earnings calendar in your pocket — implied vs. realized moves, home-screen widgets, Live Activities on your Lock Screen, and an AI assistant that explains every move.</p>
+    <div class="cta-row">
+      <a href="#" data-auth-open="signup" class="btn primary">Create account →</a>
+      <a href="#features" class="btn ghost">See features</a>
+    </div>
+    <div class="note">Free to join · Sync your watchlist across devices.</div>
+  </div>
+  <div class="phone"><img src="01-calendar.png" alt="Earnings Radar calendar" loading="eager" /></div>
+</header>
+
+<!-- FEATURE 1: calendar -->
+<section class="block" id="features">
+  <span class="eyebrow">The calendar</span>
+  <h2>Every report, every week — at a glance.</h2>
+  <p class="lead">Browse the whole week in a clean icon grid or a detailed list. Tap any company for the full picture. Toggle the layout with one button.</p>
+  <div class="feat">
+    <div class="phone"><img src="01-calendar.png" alt="Weekly calendar" loading="lazy" /></div>
+    <div>
+      <div class="flist">
+        <div class="fitem"><div class="ic">🗓️</div><div><h4>Grid or list, your call</h4><p>Switch between an app-icon grid and a detailed breakdown instantly.</p></div></div>
+        <div class="fitem"><div class="ic">🌅</div><div><h4>Before open & after close</h4><p>Reports are split by session so you always know when to watch.</p></div></div>
+        <div class="fitem"><div class="ic">📊</div><div><h4>Estimates up front</h4><p>Revenue and EPS estimates on every card, before the numbers drop.</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURE 2: detail + implied vs realized -->
+<section class="block">
+  <span class="eyebrow">Deep dive</span>
+  <h2>Estimate vs. actual — and how the stock actually moved.</h2>
+  <p class="lead">Open any ticker to see the expected move, the real reaction, EPS and revenue with surprise %, past quarters, and an AI insight on what it all means.</p>
+  <div class="feat rev">
+    <div class="phone"><img src="02-detail-amzn.png" alt="Company detail" loading="lazy" /></div>
+    <div>
+      <div class="flist">
+        <div class="fitem"><div class="ic">⚡</div><div><h4>Implied vs. realized move</h4><p>See if the stock broke past what options implied — quarter after quarter.</p></div></div>
+        <div class="fitem"><div class="ic">✦</div><div><h4>AI insight, powered by Claude</h4><p>A plain-English read on the beat, the miss, and the guidance.</p></div></div>
+        <div class="fitem"><div class="ic">🧾</div><div><h4>Full est/act history</h4><p>Past earnings with EPS and revenue estimates, actuals, and surprise.</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WIDGETS -->
+<section class="block">
+  <span class="eyebrow">Home screen</span>
+  <h2>Widgets that keep score for you.</h2>
+  <p class="lead">Three widgets bring earnings to your Home Screen — plus a live red “On Air” view when calls are happening right now.</p>
+  <div class="trio">
+    <div><div class="phone"><img src="07-widget-thisweek.png" alt="This week widget" loading="lazy" /></div><div class="cap"><h4>Reporting This Week</h4><p>The biggest names, ranked.</p></div></div>
+    <div><div class="phone"><img src="08-widget-mystocks.png" alt="My stocks widget" loading="lazy" /></div><div class="cap"><h4>My Stocks</h4><p>Your watchlist, soonest first.</p></div></div>
+    <div><div class="phone"><img src="09-widget-onair.png" alt="On air widget" loading="lazy" /></div><div class="cap"><h4>On Air</h4><p>Live calls, in red, as they happen.</p></div></div>
+  </div>
+</section>
+
+<!-- LIVE ACTIVITY -->
+<section class="block">
+  <span class="eyebrow">Lock screen</span>
+  <h2>Track a report live, without opening the app.</h2>
+  <p class="lead">Pin any earnings event to your Lock Screen with a Live Activity — the reaction updates in real time the moment numbers hit.</p>
+  <div class="feat">
+    <div class="phone"><img src="10-lockscreen-liveactivity.png" alt="Lock Screen Live Activity" loading="lazy" /></div>
+    <div>
+      <div class="flist">
+        <div class="fitem"><div class="ic">🔔</div><div><h4>Live Activities</h4><p>Beat/miss and price reaction, right on your Lock Screen.</p></div></div>
+        <div class="fitem"><div class="ic">⭐</div><div><h4>Watchlist & reminders</h4><p>Star companies and get notified before they report.</p></div></div>
+        <div class="fitem"><div class="ic">💬</div><div><h4>Ask the assistant</h4><p>“Why did AMD drop after beating?” — get an answer in seconds.</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GALLERY -->
+<section class="block">
+  <span class="eyebrow">A closer look</span>
+  <h2>Every screen, built for earnings.</h2>
+  <div class="gallery">
+    <div class="phone"><img src="04-earnings-live.png" alt="Reporting today" loading="lazy" /></div>
+    <div class="phone"><img src="05-my-stocks.png" alt="My Stocks" loading="lazy" /></div>
+    <div class="phone"><img src="03-implied-vs-realized.png" alt="Implied vs realized" loading="lazy" /></div>
+    <div class="phone"><img src="06-chat.png" alt="AI chat" loading="lazy" /></div>
+    <div class="phone"><img src="02-detail-amzn.png" alt="Detail" loading="lazy" /></div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="block">
+  <div class="final">
+    <span class="pill"><span class="dot"></span> In production · launching soon</span>
+    <h2 style="margin-top:14px">Get on the radar.</h2>
+    <p>Create a free account to save your watchlist and sync it across all your devices.</p>
+    <a href="#" data-auth-open="signup" class="btn primary">Create account →</a>
+  </div>
+</section>
+
+<footer class="foot">
+  <a class="brand" href="index.html" style="display:flex;align-items:center;gap:8px;font-weight:800">
+    <span class="wmico" style="width:20px;height:26px"><svg viewBox="0 0 120 150" xmlns="http://www.w3.org/2000/svg"><path class="leaf-l" d="M60 6 C2 42 2 108 60 144 Z"/><path class="leaf-r" d="M60 6 C118 42 118 108 60 144 Z"/></svg></span>
+    earnings<span class="b" style="color:var(--blueLt)">radar</span>
+  </a>
+  <span>© <span id="yr"></span> Earnings Radar</span>
+  <a href="index.html">Calendar</a>
+  <a href="#" data-auth-open>Sign in</a>
+  <a href="https://x.com/_EarningsRadar" target="_blank" rel="noopener">@_EarningsRadar</a>
+</footer>
+<script>document.getElementById('yr').textContent=new Date().getFullYear()</script>
+<script type="module" src="auth.js"></script>
+</body>
+</html>
