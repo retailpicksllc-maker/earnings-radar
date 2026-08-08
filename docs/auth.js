@@ -175,6 +175,8 @@ q("[data-signout]").onclick = () => signOut(auth);
 /* auth state → swap modal view + update the nav trigger label */
 onAuthStateChanged(auth, (user) => {
   const trigger = document.getElementById("authTrigger");
+  // Hide "Create account" / sign-in CTAs across the page when signed in.
+  document.querySelectorAll("[data-auth-open]").forEach((el) => { el.style.display = user ? "none" : ""; });
   if (user) {
     const nm = user.displayName || user.email.split("@")[0];
     q('[data-view="form"]').style.display = "none";
