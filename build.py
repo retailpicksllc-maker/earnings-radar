@@ -942,25 +942,24 @@ if in_ext and price_syms:
 # NASDAQ has full rosters WITH market caps for past dates, so these stay stable
 # every build (unlike Finnhub, which returns nothing for some past days).
 # Placed here (after history/news/prices) so it never bloats those fetches.
-_bf_syms = {r.get('symbol','') for rows in past_earnings.values() for r in rows}
 for _off in range(1, 11):
     _d = (today - timedelta(days=_off)).strftime('%Y-%m-%d')
-    if past_earnings.get(_d):
-        continue  # primary feed already covered this day
+    _existing = past_earnings.get(_d, [])
+    _existing_syms = {r.get('symbol', '') for r in _existing}
     _added = []
     for _r in fetch_nasdaq_day(_d):
         _sym = _r.get('symbol', '')
-        if not _sym or _sym in upcoming_syms or _sym in _bf_syms:
+        if not _sym or _sym in upcoming_syms or _sym in _existing_syms:
             continue
         if mcap_of(_r) < MIN_CAP:      # respect the $500M floor
             continue
+        _existing_syms.add(_sym)
         _added.append(_r)
     if _added:
-        _added.sort(key=lambda r: mcap_of(r), reverse=True)
-        past_earnings[_d] = _added
-        for _r in _added:
-            _bf_syms.add(_r.get('symbol', ''))
-        print(f"  NASDAQ backfill {_d}: +{len(_added)} companies (>= $500M)")
+        merged = _existing + _added
+        merged.sort(key=lambda r: mcap_of(r), reverse=True)
+        past_earnings[_d] = merged
+        print(f"  NASDAQ backfill {_d}: +{len(_added)} (day now {len(merged)}, >= $500M)")
 
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
