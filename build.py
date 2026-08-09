@@ -315,50 +315,20 @@ backfill_mcaps(past_earnings, 'past')
 past_earnings = filter_1b(past_earnings)
 print(f"  Past earnings after $1B filter: {sum(len(v) for v in past_earnings.values())} companies across {len(past_earnings)} days")
 
-# ── Fallback datastore: fill recent past days the primary feed left empty ──
-DATASTORE_API = "https://captivating-creation-production-3d49.up.railway.app"
-def fetch_datastore_calendar(from_d, to_d, min_cap_musd=1000):
-    url = f"{DATASTORE_API}/v1/calendar?from={from_d}&to={to_d}&min_cap={min_cap_musd}"
-    try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
-        with urllib.request.urlopen(req, timeout=25) as r:
-            return json.loads(r.read())
-    except Exception as e:
-        print(f"  ERR datastore {from_d}-{to_d}: {e}")
-        return []
-def _ds_row(ev):
-    fy, fq = ev.get('fiscal_year'), ev.get('fiscal_quarter') or ''
-    fqe = f"{fq}/{str(fy)[2:]}" if fq and fy else ''
-    musd = ev.get('market_cap_musd')
-    tmap = {'bmo': 'time-pre-market', 'amc': 'time-after-hours'}
-    return {
-        'symbol': (ev.get('ticker') or '').strip(),
-        'time': tmap.get((ev.get('report_time') or '').lower(), 'time-not-supplied'),
-        'fiscalQuarterEnding': fqe,
-        'eps': ev.get('eps_est'),
-        'epsActual': ev.get('eps_act'),
-        'revenueEstimate': ev.get('rev_est'),
-        'revenueActual': ev.get('rev_act'),
-        'marketCap': f'${musd*1e6:,.0f}' if isinstance(musd, (int, float)) and musd else '',
-        'name': (ev.get('ticker') or '').strip(),
-    }
-_ds_added = 0
-for _ev in fetch_datastore_calendar((today - timedelta(days=30)).strftime('%Y-%m-%d'), (today - timedelta(days=1)).strftime('%Y-%m-%d'), 1000):
-    if _ev.get('status') != 'reported':
-        continue
-    _d = _ev.get('report_date', '')
-    _sym = (_ev.get('ticker') or '').strip()
-    if not _d or not _sym or _sym in upcoming_syms:
-        continue
-    _row = _ds_row(_ev)
-    if mcap_of(_row) <= 1e9:
-        continue
-    _day = past_earnings.setdefault(_d, [])
-    if any(r.get('symbol') == _sym for r in _day):
-        continue
-    _day.append(_row)
-    _ds_added += 1
-print(f"  Datastore fallback: +{_ds_added} past companies added")
+# ── Backfill recent past days the primary feed left empty, using NASDAQ (full past rosters) ──
+for _off in range(1, 11):
+    _d = (today - timedelta(days=_off)).strftime('%Y-%m-%d')
+    if past_earnings.get(_d):
+        continue  # primary feed already covered this day
+    _added = []
+    for _r in fetch_nasdaq_day(_d):
+        _sym = _r.get('symbol', '')
+        if not _sym or _sym in upcoming_syms or mcap_of(_r) <= 1e9:
+            continue
+        _added.append(_r)
+    if _added:
+        past_earnings[_d] = _added
+        print(f"  NASDAQ backfill {_d}: +{len(_added)} companies")
 
 # ── 2. Earnings history ───────────────────────────────────────────────────────
 
