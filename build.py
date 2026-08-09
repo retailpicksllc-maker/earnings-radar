@@ -315,20 +315,6 @@ backfill_mcaps(past_earnings, 'past')
 past_earnings = filter_1b(past_earnings)
 print(f"  Past earnings after $1B filter: {sum(len(v) for v in past_earnings.values())} companies across {len(past_earnings)} days")
 
-# ── Backfill recent past days the primary feed left empty, using NASDAQ (full past rosters) ──
-for _off in range(1, 11):
-    _d = (today - timedelta(days=_off)).strftime('%Y-%m-%d')
-    if past_earnings.get(_d):
-        continue  # primary feed already covered this day
-    _added = []
-    for _r in fetch_nasdaq_day(_d):
-        _sym = _r.get('symbol', '')
-        if not _sym or _sym in upcoming_syms or mcap_of(_r) <= 1e9:
-            continue
-        _added.append(_r)
-    if _added:
-        past_earnings[_d] = _added
-        print(f"  NASDAQ backfill {_d}: +{len(_added)} companies")
 
 # ── 2. Earnings history ───────────────────────────────────────────────────────
 
@@ -1346,6 +1332,21 @@ if ALPHA_KEY:
 
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
+
+# ── Backfill recent past days the primary feed left empty, using NASDAQ (full past rosters) ──
+for _off in range(1, 11):
+    _d = (today - timedelta(days=_off)).strftime('%Y-%m-%d')
+    if past_earnings.get(_d):
+        continue  # primary feed already covered this day
+    _added = []
+    for _r in fetch_nasdaq_day(_d):
+        _sym = _r.get('symbol', '')
+        if not _sym or _sym in upcoming_syms or mcap_of(_r) <= 1e9:
+            continue
+        _added.append(_r)
+    if _added:
+        past_earnings[_d] = _added
+        print(f"  NASDAQ backfill {_d}: +{len(_added)} companies")
 
 with open('template.html', 'r') as f:
     template = f.read()
