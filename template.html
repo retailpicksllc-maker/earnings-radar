@@ -4,6 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Earnings Radar — Earnings Calendar</title>
+<!-- Re-arm the 5s sign-in popup on every visit (clears auth.js's once-per-session guard). -->
+<script>try{sessionStorage.removeItem("er_auth_prompted");}catch(e){}</script>
 <style>
   :root{
     --bg:#0A1024; --bg2:#0d1430; --card:rgba(255,255,255,.05); --card2:rgba(255,255,255,.08);
@@ -207,8 +209,6 @@ async function pollPrices(){
     });
   }catch(e){ /* CORS/offline: keep the baked snapshot */ }
 }
-setInterval(pollPrices, 5000);
-document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pollPrices(); });
 
 // ── Sparklines: /v1/charts (~30 daily closes) → tiny inline SVG per tile. ──
 // Cached per session (they barely change); fetched only for visible tiles.
@@ -265,21 +265,11 @@ function logoURL(sym){return `https://img.logo.dev/ticker/${encodeURIComponent(s
 function sessionOf(t){t=(t||'').toLowerCase();if(t.includes('pre'))return 'bmo';if(t.includes('after')||t.includes('post'))return 'amc';return 'tbd';}
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
-function pxHTML(sym){
-  const p=(typeof PRICES!=='undefined'&&PRICES[sym])?PRICES[sym]:null;
-  if(!p||p.dp==null) return `<div class="pxchg" data-px="${esc(sym)}"></div>`;
-  const up=p.dp>=0;
-  return `<div class="pxchg ${up?'up':'down'}" data-px="${esc(sym)}">${up?'+':''}${p.dp}%</div>`;
-}
 function tileHTML(r,hide){
   const initial=(r.symbol[0]||'?').toUpperCase();
-  const et=r.expectedTime||'', conf=r.expectedTimeConf||'unknown';
-  const etLabel = et ? `<div class="etime ${esc(conf)}">${conf==='estimated'?'~':''}${esc(et)}</div>` : '';
   return `<div class="tilewrap${hide?' xhide':''}" data-sym="${esc(r.symbol)}" data-date="${r.date}">
     <div class="tile mono" style="background:${monoColor(r.symbol)}" data-logo="${esc(r.symbol)}">${initial}</div>
-    <div class="tick2">${esc(r.symbol)}</div>
-    ${pxHTML(r.symbol)}
-    <div class="spark" data-spark="${esc(r.symbol)}"></div>${etLabel}</div>`;
+    <div class="tick2">${esc(r.symbol)}</div></div>`;
 }
 function upgradeLogos(root){
   root.querySelectorAll('.tile.mono[data-logo]').forEach(el=>{
@@ -338,8 +328,6 @@ function render(){
   }
   $('#calGrid').innerHTML=html;
   upgradeLogos($('#calGrid'));
-  pollPrices();
-  loadSparklines();
 }
 
 // ---- detail modal ----
@@ -426,15 +414,40 @@ function openDetail(sym,date){
       <div class="statbox"><div class="l">Revenue estimate</div><div class="v">${fmtRevM(revE)}</div></div>
       <div class="statbox"><div class="l">Revenue actual</div><div class="v">${fmtRevM(revA)}</div><div class="s" style="color:${col(revS)}">${revS}</div></div>
     </div>
-    ${hist.length?`<div class="seclabel">Estimate vs actual — history</div><div class="htable"><div class="r hh"><span class="q">Quarter</span><span>EPS est</span><span>EPS act</span><span>Rev est</span><span>Rev act</span></div>${hist.map((h,i)=>{const eS=surprise(h.epsAct,h.epsEst),rS=surprise(h.revAct,h.revEst);return `<div class="r${i===0&&reported?' now':''}"><span class="q">${esc(h.qtr||'')}</span><span>${fmtEps(h.epsEst)}</span><span style="color:${col(eS)}">${fmtEps(h.epsAct)}</span><span>${fmtRevM(h.revEst)}</span><span style="color:${col(rS)}">${fmtRevM(h.revAct)}</span></div>`;}).join('')}</div>`:''}
+    <div id="detHist"></div>
     ${news.length?`<div class="seclabel">Latest news</div><div class="news">${news.map(n=>`<a href="${esc(n.link)}" target="_blank" rel="noopener"><div class="t">${esc(n.title)}</div><div class="m">${esc(n.date||'')} ${esc(n.time||'')}</div></a>`).join('')}</div>`:''}
   `;
   upgradeLogos($('#sheet'));
   $('#overlay').classList.add('on');
+  renderDetHist(hist);
   loadDetChart(sym);
+  loadDetHistory(sym);
   loadDetailQuote(sym);
   clearInterval(window._detTimer);
   window._detTimer=setInterval(()=>loadDetailQuote(sym),5000);
+}
+// History table — prefer the worker's /v1/history (fresh EPS est/act + rev act).
+function renderDetHist(hist){
+  const el=document.getElementById('detHist'); if(!el) return;
+  if(!hist||!hist.length){ el.innerHTML=''; return; }
+  const col=s=>s&&s.startsWith('+')?'var(--green)':(s?'var(--red)':'var(--muted)');
+  el.innerHTML=`<div class="seclabel">Estimate vs actual — history</div><div class="htable">`+
+    `<div class="r hh"><span class="q">Quarter</span><span>EPS est</span><span>EPS act</span><span>Rev est</span><span>Rev act</span></div>`+
+    hist.map((h,i)=>{const eS=surprise(h.epsAct,h.epsEst),rS=surprise(h.revAct,h.revEst);
+      return `<div class="r${i===0?' now':''}"><span class="q">${esc(h.qtr||'')}</span><span>${fmtEps(h.epsEst)}</span>`+
+        `<span style="color:${col(eS)}">${fmtEps(h.epsAct)}</span><span>${fmtRevM(h.revEst)}</span>`+
+        `<span style="color:${col(rS)}">${fmtRevM(h.revAct)}</span></div>`;}).join('')+`</div>`;
+}
+async function loadDetHistory(sym){
+  try{
+    const r=await fetch(`${WORKER_BASE}/v1/history/${encodeURIComponent(sym)}?quarters=8`,{cache:'no-store'});
+    if(!r.ok) return; const j=await r.json();
+    const qs=(j&&j.quarters)?j.quarters:[]; if(!qs.length) return;
+    const fmtQ=q=>{try{return new Date((q.fiscal_period_end||'')+'T00:00:00').toLocaleDateString('en-US',{month:'short',year:'numeric'});}catch(e){return (q.fiscal_quarter||'')+' '+(q.fiscal_year||'');}};
+    const hist=qs.map(q=>({qtr:fmtQ(q), epsEst:q.eps_est, epsAct:q.eps_act,
+      revEst:(q.rev_est!=null?q.rev_est/1e6:null), revAct:(q.rev_act!=null?q.rev_act/1e6:null)}));
+    renderDetHist(hist);
+  }catch(e){ /* keep whatever was rendered */ }
 }
 function closeDetail(){clearInterval(window._detTimer);$('#overlay').classList.remove('on');}
 $('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeDetail();});
