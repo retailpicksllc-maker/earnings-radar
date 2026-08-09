@@ -938,6 +938,30 @@ if in_ext and price_syms:
         print(f"  WARN YF ext fetch: {e}")
     print(f"  After extended-hours update: {len(price_data)} tickers")
 
+# ── Backfill recent past days the primary (Finnhub) feed left empty ───────────
+# NASDAQ has full rosters WITH market caps for past dates, so these stay stable
+# every build (unlike Finnhub, which returns nothing for some past days).
+# Placed here (after history/news/prices) so it never bloats those fetches.
+_bf_syms = {r.get('symbol','') for rows in past_earnings.values() for r in rows}
+for _off in range(1, 11):
+    _d = (today - timedelta(days=_off)).strftime('%Y-%m-%d')
+    if past_earnings.get(_d):
+        continue  # primary feed already covered this day
+    _added = []
+    for _r in fetch_nasdaq_day(_d):
+        _sym = _r.get('symbol', '')
+        if not _sym or _sym in upcoming_syms or _sym in _bf_syms:
+            continue
+        if mcap_of(_r) < MIN_CAP:      # respect the $500M floor
+            continue
+        _added.append(_r)
+    if _added:
+        _added.sort(key=lambda r: mcap_of(r), reverse=True)
+        past_earnings[_d] = _added
+        for _r in _added:
+            _bf_syms.add(_r.get('symbol', ''))
+        print(f"  NASDAQ backfill {_d}: +{len(_added)} companies (>= $500M)")
+
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
 
