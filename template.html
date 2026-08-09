@@ -240,14 +240,14 @@ function render(){
     let body='', count=0;
     {
       const before=list.filter(r=>sessionOf(r.time)==='bmo');
-      const after=list.filter(r=>sessionOf(r.time)==='amc');
+      const afterKnown=list.filter(r=>sessionOf(r.time)==='amc');
       const other=list.filter(r=>{const s=sessionOf(r.time);return s!=='bmo'&&s!=='amc';});
       // Upcoming: confirmed BMO/AMC only (drop TBD).
-      // Past: everything already reported, so also show unknown-time reporters.
-      count=before.length+after.length+(isPast?other.length:0);
+      // Past: every company goes in a session; unknown session defaults to After Close.
+      const after = isPast ? afterKnown.concat(other) : afterKnown;
+      count=before.length+after.length;
       body+=section(before,' am','<span class="ic">☀︎</span>Before Open');
       body+=section(after,' pm','<span class="ic">☾</span>After Close');
-      if(isPast) body+=section(other,'','<span class="ic">✓</span>Reported');
     }
     if(!count) body='<div class="emptyday">—</div>';
     const isToday = dISO===todayISO;
