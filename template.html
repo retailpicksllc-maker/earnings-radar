@@ -444,8 +444,17 @@ async function loadDetHistory(sym){
     if(!r.ok) return; const j=await r.json();
     const qs=(j&&j.quarters)?j.quarters:[]; if(!qs.length) return;
     const fmtQ=q=>{try{return new Date((q.fiscal_period_end||'')+'T00:00:00').toLocaleDateString('en-US',{month:'short',year:'numeric'});}catch(e){return (q.fiscal_quarter||'')+' '+(q.fiscal_year||'');}};
-    const hist=qs.map(q=>({qtr:fmtQ(q), epsEst:q.eps_est, epsAct:q.eps_act,
-      revEst:(q.rev_est!=null?q.rev_est/1e6:null), revAct:(q.rev_act!=null?q.rev_act/1e6:null)}));
+    // /v1/history lacks revenue for most tickers — backfill it from the calendar
+    // feed (which carries rev est/act, already in $millions) by fiscal quarter.
+    const revMap={};
+    DATA.filter(x=>x.symbol===sym).forEach(x=>{const rw=x.row||{}; const k=rw.fiscalQuarterEnding;
+      if(k) revMap[k]={revEst:numv(rw.revenueEstimate), revAct:numv(rw.revenueActual)};});
+    const hist=qs.map(q=>{
+      const fqe=(q.fiscal_quarter||'')+'/'+String(q.fiscal_year||'').slice(2);
+      const cal=revMap[fqe]||{};
+      return {qtr:fmtQ(q), epsEst:q.eps_est, epsAct:q.eps_act,
+        revEst:(q.rev_est!=null?q.rev_est/1e6:(cal.revEst!=null?cal.revEst:null)),
+        revAct:(q.rev_act!=null?q.rev_act/1e6:(cal.revAct!=null?cal.revAct:null))};});
     renderDetHist(hist);
   }catch(e){ /* keep whatever was rendered */ }
 }
