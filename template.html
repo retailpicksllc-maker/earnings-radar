@@ -51,10 +51,10 @@
   @media(max-width:1000px){.calweek{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:600px){.calweek{grid-template-columns:1fr}}
   .dayhead{text-align:center;margin-bottom:12px}
-  .daypill{display:inline-flex;align-items:center;gap:8px;background:rgba(47,107,255,.14);border:1px solid var(--border);color:var(--text);font-weight:800;font-size:15px;padding:6px 15px;border-radius:999px}
-  .daypill b{background:var(--blue);color:#fff;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800}
-  .dayhead.today .daypill{background:var(--grad);border-color:transparent;color:#fff}
-  .dayhead.today .daypill b{background:rgba(255,255,255,.28)}
+  .dlabel{font-weight:800;font-size:16px;color:var(--text)}
+  .dcount{color:var(--muted);font-weight:800;font-size:13px;margin-left:5px}
+  .daypill{display:inline-flex;align-items:center;gap:8px;background:var(--grad);color:#fff;font-weight:800;font-size:15px;padding:6px 15px;border-radius:999px;box-shadow:0 4px 14px rgba(47,107,255,.4)}
+  .daypill b{background:rgba(255,255,255,.28);color:#fff;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800}
   .sesshead{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--text);background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:9px;padding:8px 12px;margin:14px 0 11px}
   .sesshead .ic{font-size:13px;line-height:1}
   .sesshead.am .ic{color:var(--sun)} .sesshead.pm .ic{color:#cfe0ff}
@@ -251,7 +251,11 @@ function render(){
       body+=section(after,' pm','<span class="ic">☾</span>After Close');
     }
     if(!count) body='<div class="emptyday">—</div>';
-    html+=`<div class="daycol"><div class="dayhead ${dISO===todayISO?'today':''}"><span class="daypill">${days[i]} ${d.getDate()}${count?` <b>${count}</b>`:''}</span></div>${body}</div>`;
+    const isToday = dISO===todayISO;
+    const head = isToday
+      ? `<span class="daypill">${days[i]} ${d.getDate()}${count?` <b>${count}</b>`:''}</span>`
+      : `<span class="dlabel">${days[i]} ${d.getDate()}</span>${count?`<span class="dcount">${count}</span>`:''}`;
+    html+=`<div class="daycol"><div class="dayhead${isToday?' today':''}">${head}</div>${body}</div>`;
   }
   $('#calGrid').innerHTML=html;
   upgradeLogos($('#calGrid'));
