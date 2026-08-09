@@ -70,6 +70,11 @@
   .tile img{width:100%;height:100%;object-fit:cover;display:block}
   .tile.mono{color:#fff;font-weight:900;font-size:clamp(16px,2.5vw,24px)}
   .tick2{margin-top:6px;font-size:11.5px;font-weight:800;color:var(--text);letter-spacing:.4px}
+  .pxchg{font-size:11px;font-weight:800;line-height:1.1;min-height:12px}
+  .pxchg.up{color:#16c784}
+  .pxchg.down{color:#ea3943}
+  .etime{font-size:9.5px;color:var(--muted);line-height:1.1;margin-top:1px;letter-spacing:.2px}
+  .etime.estimated{color:var(--blueLt)}
   .emptyday{color:var(--muted);font-size:12px;padding:8px 4px;text-align:center}
   .calnote{margin-top:22px;color:var(--muted);font-size:12.5px;text-align:center}
   .loading{text-align:center;color:var(--muted);padding:40px;font-size:14px}
@@ -163,7 +168,33 @@ const NEWS          = __NEWS_JS__;
 const META          = __META_JS__;
 const ESTACT        = (typeof __ESTACT_JS__ !== 'undefined') ? __ESTACT_JS__ : {};
 const BUILT_AT      = __BUILT_AT__;
+const PRICES        = (typeof __PRICES_JS__ !== 'undefined') ? __PRICES_JS__ : {};
 const LOGO_TOKEN    = "pk_IaCPzNPATUWzZrN-vHTv1g";
+const WORKER_BASE   = "https://captivating-creation-production-3d49.up.railway.app";
+
+// ── Live price polling: /v1/quotes every 5s (upgrades the baked snapshot). ──
+// Silently no-ops until the worker enables CORS for this origin.
+async function pollPrices(){
+  if(document.hidden) return;
+  const syms=[...new Set([...document.querySelectorAll('[data-px]')]
+      .map(e=>e.getAttribute('data-px')).filter(Boolean))].slice(0,400);
+  if(!syms.length) return;
+  try{
+    const r=await fetch(`${WORKER_BASE}/v1/quotes?symbols=${encodeURIComponent(syms.join(','))}`,{cache:'no-store'});
+    if(!r.ok) return;
+    const j=await r.json();
+    const arr=Array.isArray(j)?j:(j.data||j.quotes||[]);
+    const map={}; for(const q of arr){ if(q&&q.ticker) map[q.ticker]=q; }
+    document.querySelectorAll('[data-px]').forEach(el=>{
+      const q=map[el.getAttribute('data-px')]; if(!q||q.change_pct==null) return;
+      const dp=Math.round(q.change_pct*100)/100, up=dp>=0;
+      el.textContent=(up?'+':'')+dp+'%';
+      el.classList.remove('up','down'); el.classList.add(up?'up':'down');
+    });
+  }catch(e){ /* CORS/offline: keep the baked snapshot */ }
+}
+setInterval(pollPrices, 5000);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pollPrices(); });
 
 const $ = s => document.querySelector(s);
 
@@ -195,11 +226,20 @@ function logoURL(sym){return `https://img.logo.dev/ticker/${encodeURIComponent(s
 function sessionOf(t){t=(t||'').toLowerCase();if(t.includes('pre'))return 'bmo';if(t.includes('after')||t.includes('post'))return 'amc';return 'tbd';}
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
+function pxHTML(sym){
+  const p=(typeof PRICES!=='undefined'&&PRICES[sym])?PRICES[sym]:null;
+  if(!p||p.dp==null) return `<div class="pxchg" data-px="${esc(sym)}"></div>`;
+  const up=p.dp>=0;
+  return `<div class="pxchg ${up?'up':'down'}" data-px="${esc(sym)}">${up?'+':''}${p.dp}%</div>`;
+}
 function tileHTML(r,hide){
   const initial=(r.symbol[0]||'?').toUpperCase();
+  const et=r.expectedTime||'', conf=r.expectedTimeConf||'unknown';
+  const etLabel = et ? `<div class="etime ${esc(conf)}">${conf==='estimated'?'~':''}${esc(et)}</div>` : '';
   return `<div class="tilewrap${hide?' xhide':''}" data-sym="${esc(r.symbol)}" data-date="${r.date}">
     <div class="tile mono" style="background:${monoColor(r.symbol)}" data-logo="${esc(r.symbol)}">${initial}</div>
-    <div class="tick2">${esc(r.symbol)}</div></div>`;
+    <div class="tick2">${esc(r.symbol)}</div>
+    ${pxHTML(r.symbol)}${etLabel}</div>`;
 }
 function upgradeLogos(root){
   root.querySelectorAll('.tile.mono[data-logo]').forEach(el=>{
@@ -258,6 +298,7 @@ function render(){
   }
   $('#calGrid').innerHTML=html;
   upgradeLogos($('#calGrid'));
+  pollPrices();
 }
 
 // ---- detail modal ----

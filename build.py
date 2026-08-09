@@ -81,6 +81,18 @@ def _worker_fqe(e):
 
 def map_worker_row(e):
     rt = (e.get('report_time') or 'unknown').lower()
+    # If the coarse report_time is unknown, derive session from the richer
+    # expected_time field ("before open" / "after close" / "16:15 ET").
+    if rt not in ('bmo', 'amc'):
+        et = (e.get('expected_time') or '').lower()
+        if 'before' in et or 'pre' in et:
+            rt = 'bmo'
+        elif 'after' in et or 'post' in et:
+            rt = 'amc'
+        else:
+            _m = re.search(r'(\d{1,2}):(\d{2})', et)
+            if _m:
+                rt = 'bmo' if int(_m.group(1)) < 12 else 'amc'
     time_val = ('time-pre-market' if rt == 'bmo'
                 else 'time-after-hours' if rt == 'amc'
                 else 'time-not-supplied')
@@ -100,6 +112,11 @@ def map_worker_row(e):
         'marketCap': cap_str,
         'name': e.get('ticker', ''),
         'status': e.get('status', ''),
+        # Expected report time (worker learned clock time), styled by confidence
+        'expectedTime': e.get('expected_time') or '',
+        'expectedTimeConf': (e.get('expected_time_confidence') or 'unknown'),
+        'verified': e.get('verified', True),
+        'divergence': bool(e.get('divergence_flag')),
     }
 
 _win_from = (today - timedelta(days=45)).strftime('%Y-%m-%d')
@@ -717,100 +734,36 @@ try:
 except Exception as e:
     print(f"WARN mktcap cache save: {e}")
 
-# ── 4b. Fetch live prices for calendar tickers ───────────────────────────────
+# ── 4b. Live price snapshot from worker /v1/quotes (entire board in ONE call) ─
+# Client polls /v1/quotes every ~5s for live ticks; this bakes an initial snapshot
+# so prices render immediately (and whenever CORS blocks the browser poll).
 price_data = {}
-# Build prioritized price list within Finnhub free-tier limit (~60/min)
-# Priority 1: recently-reported tickers (last 5 days) sorted by market cap
-recent5 = (today - timedelta(days=5)).strftime('%Y-%m-%d')
-past_for_price = []
-for iso, rows in past_earnings.items():
-    if iso >= recent5:
-        for r in rows:
-            sym = r.get('symbol','')
-            if sym:
-                mc = parse_mcap(r.get('marketCap','')) or parse_mcap(mktcap_cache.get(sym,''))
-                past_for_price.append((mc, sym))
-past_for_price.sort(reverse=True)
-past_price_syms = list(dict.fromkeys(sym for _, sym in past_for_price))[:50]
-
-# Priority 2: upcoming tickers sorted by market cap
-upcoming_for_price = []
-for rows in earnings.values():
-    for r in rows:
-        sym = r.get('symbol','')
-        if sym and sym not in past_price_syms:
-            mc = parse_mcap(r.get('marketCap','')) or parse_mcap(mktcap_cache.get(sym,''))
-            upcoming_for_price.append((mc, sym))
-upcoming_for_price.sort(reverse=True)
-upcoming_price_syms = list(dict.fromkeys(sym for _, sym in upcoming_for_price))[:150]
-
-price_syms = past_price_syms + upcoming_price_syms
-
-# Fetch prices via Finnhub (reliable, ~60 tickers within free-tier rate limit)
-if FINNHUB_KEY and price_syms:
-    print(f"Fetching prices for {len(price_syms)} tickers via Finnhub...")
-    try:
-        import time as _time
-        from concurrent.futures import as_completed
-        def _fetch_price(sym):
+_cal_syms = set()
+for _cal in (earnings, past_earnings):
+    for _rows in _cal.values():
+        for _r in _rows:
+            if _r.get('symbol'):
+                _cal_syms.add(_r['symbol'])
+try:
+    _qreq = urllib.request.Request(f"{WORKER_BASE}/v1/quotes",
+                                   headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
+    with urllib.request.urlopen(_qreq, timeout=60) as _qr:
+        _qdata = json.loads(_qr.read())
+    _quotes = _qdata if isinstance(_qdata, list) else (_qdata.get('data') or _qdata.get('quotes') or [])
+    for _q in _quotes:
+        _sym = _q.get('ticker', '')
+        if _sym and _sym in _cal_syms and _q.get('last') is not None:
             try:
-                url = f'https://finnhub.io/api/v1/quote?symbol={sym}&token={FINNHUB_KEY}'
-                req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=3) as r:
-                    d = json.loads(r.read())
-                if d and d.get('c'):
-                    return sym, {'c':round(d['c'],2),'dp':round(d.get('dp',0),2),'pc':round(d.get('pc',0),2)}
-            except: pass
-            return sym, None
-        with ThreadPoolExecutor(max_workers=15) as ex:
-            futures = {ex.submit(_fetch_price, sym): sym for sym in price_syms}
-            _deadline = _time.time() + 45
-            for fut in as_completed(futures, timeout=50):
-                if _time.time() > _deadline: break
-                try:
-                    sym, p = fut.result()
-                    if p: price_data[sym] = p
-                except: pass
-    except Exception as e:
-        print(f"  WARN price fetch: {e}")
-    print(f"  Got prices for {len(price_data)} tickers")
-
-# ── 4b. Yahoo Finance extended-hours prices (after-hours 4-8pm ET, pre-mkt 4-9:30am ET) ──
-et_hour = datetime.now(EASTERN).hour
-et_min  = datetime.now(EASTERN).minute
-in_ext  = (16 <= et_hour < 20) or (4 <= et_hour < 9) or (et_hour == 9 and et_min < 30)
-if in_ext and price_syms:
-    print(f"Fetching extended-hours prices from Yahoo Finance ({len(price_syms)} tickers)...")
-    import urllib.request as _ur
-    def _yf_ext(sym):
-        try:
-            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1m&range=1d&includePrePost=true"
-            req = _ur.Request(url, headers={"User-Agent":"Mozilla/5.0","Accept":"application/json"})
-            with _ur.urlopen(req, timeout=4) as r:
-                meta = json.loads(r.read()).get("chart",{}).get("result",[{}])[0].get("meta",{})
-            pc = meta.get("previousClose") or meta.get("chartPreviousClose") or meta.get("regularMarketPrice")
-            if et_hour >= 16:
-                ext_p = meta.get("postMarketPrice")
-            else:
-                ext_p = meta.get("preMarketPrice")
-            if ext_p and pc:
-                dp = round((ext_p - pc) / pc * 100, 2)
-                return sym, {"c": round(ext_p, 2), "dp": dp, "pc": round(pc, 2)}
-        except: pass
-        return sym, None
-    try:
-        import time as _t2
-        from concurrent.futures import ThreadPoolExecutor as _TPE, as_completed as _ac2
-        with _TPE(max_workers=10) as ex:
-            futs = {ex.submit(_yf_ext, s): s for s in price_syms}
-            _dl2 = _t2.time() + 30
-            for fut in _ac2(futs, timeout=35):
-                if _t2.time() > _dl2: break
-                sym2, p2 = fut.result()
-                if p2: price_data[sym2] = p2   # override with extended-hours price
-    except Exception as e:
-        print(f"  WARN YF ext fetch: {e}")
-    print(f"  After extended-hours update: {len(price_data)} tickers")
+                price_data[_sym] = {
+                    'c':  round(float(_q['last']), 2),
+                    'dp': round(float(_q.get('change_pct') or 0), 2),
+                    'pc': round(float(_q.get('prev_close') or 0), 2),
+                }
+            except Exception:
+                pass
+    print(f"  Prices from worker /v1/quotes: {len(price_data)} of {len(_cal_syms)} calendar tickers ({len(_quotes)} on board)")
+except Exception as e:
+    print(f"  WARN worker quotes fetch: {e}")
 
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
