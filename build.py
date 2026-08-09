@@ -243,15 +243,19 @@ for _src in (earnings, past_earnings):
                 if _cap:
                     _r['marketCap'] = _cap
 # Apply the floor; drop any day left empty
-def _apply_floor(cal):
+def _apply_floor(cal, keep_unknown=False):
     out = {}
     for _d, _rows in cal.items():
-        keep = [r for r in _rows if mcap_of(r) >= MIN_CAP]
+        # Upcoming: strict — drop anything not confirmed >= $500M.
+        # Past (keep_unknown): only drop companies we can CONFIRM are < $500M,
+        # so already-reported tickers never vanish when their cap is momentarily
+        # missing from the feed.
+        keep = [r for r in _rows if mcap_of(r) >= MIN_CAP or (keep_unknown and mcap_of(r) == 0)]
         if keep:
             out[_d] = keep
     return out
 earnings = _apply_floor(earnings)
-past_earnings = _apply_floor(past_earnings)
+past_earnings = _apply_floor(past_earnings, keep_unknown=True)
 total_companies = sum(len(v) for v in earnings.values())
 print(f"  After $500M floor: {total_companies} upcoming, "
       f"{sum(len(v) for v in past_earnings.values())} past companies")
