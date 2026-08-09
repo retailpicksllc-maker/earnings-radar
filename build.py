@@ -262,7 +262,7 @@ print(f"Fetching {len(ranges_to_fetch)} past date ranges from Finnhub...")
 chunks_done = past_calendar_cached.get('_chunks', {})
 for fr, to in ranges_to_fetch:
     rows = fetch_finnhub_range(fr, to)
-    confirmed = [r for r in rows if r['time'] in ('time-pre-market', 'time-after-hours')]
+    confirmed = [r for r in rows if r.get('symbol')]  # keep all past reporters; a missing BMO/AMC session tag shouldn't drop a reported company
     # Store by date
     for row in confirmed:
         dt = row.get('date', '')
