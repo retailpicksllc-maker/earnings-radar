@@ -50,8 +50,11 @@
   .calweek{display:grid;grid-template-columns:repeat(5,1fr);gap:18px}
   @media(max-width:1000px){.calweek{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:600px){.calweek{grid-template-columns:1fr}}
-  .dayhead{text-align:center;font-weight:800;font-size:16px;letter-spacing:.3px;margin-bottom:12px}
-  .dayhead.today .d{color:var(--blueLt)} .dayhead .d{opacity:.6;font-weight:700}
+  .dayhead{text-align:center;margin-bottom:12px}
+  .daypill{display:inline-flex;align-items:center;gap:8px;background:rgba(47,107,255,.14);border:1px solid var(--border);color:var(--text);font-weight:800;font-size:15px;padding:6px 15px;border-radius:999px}
+  .daypill b{background:var(--blue);color:#fff;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800}
+  .dayhead.today .daypill{background:var(--grad);border-color:transparent;color:#fff}
+  .dayhead.today .daypill b{background:rgba(255,255,255,.28)}
   .sesshead{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--text);background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:9px;padding:8px 12px;margin:14px 0 11px}
   .sesshead .ic{font-size:13px;line-height:1}
   .sesshead.am .ic{color:var(--sun)} .sesshead.pm .ic{color:#cfe0ff}
@@ -219,12 +222,10 @@ function render(){
   let html='';
   for(let i=0;i<5;i++){
     const d=new Date(m); d.setDate(m.getDate()+i); const dISO=iso(d);
-    const list=rows.filter(r=>r.date===dISO);
-    // de-dupe by symbol
-    const seen=new Set(); const uniq=list.filter(r=>seen.has(r.symbol)?false:seen.add(r.symbol));
-    const before=uniq.filter(r=>sessionOf(r.time)==='bmo');
-    const after=uniq.filter(r=>sessionOf(r.time)==='amc');
-    const tbd=uniq.filter(r=>sessionOf(r.time)==='tbd');
+    const mcapVal=r=>{const n=parseFloat(String(r.marketCap||'').replace(/[$,]/g,''));return isFinite(n)?n:0;};
+    const seen=new Set();
+    let list=rows.filter(r=>r.date===dISO).filter(r=>seen.has(r.symbol)?false:seen.add(r.symbol));
+    list.sort((a,b)=>mcapVal(b)-mcapVal(a));  // highest market cap on top
     // Each session (Before Open / After Close / TBD) shows up to 11 tiles + its own "+N" box.
     const section=(items,cls,labelHtml)=>{
       if(!items.length) return '';
@@ -235,15 +236,22 @@ function render(){
       const more = items.length>12 ? `<div class="tiles"><div class="morebox"><div class="tile moretile">+${items.length-11}</div><div class="tick2">more</div></div></div>` : '';
       return `<div class="sess">${lab}<div class="tiles">${tiles}</div>${more}</div>`;
     };
-    const isPast = dISO < todayISO;  // already-reported day
-    let body='';
-    body+=section(before,' am','<span class="ic">☀︎</span>Before Open');
-    body+=section(after,' pm','<span class="ic">☾</span>After Close');
-    // Companies whose exact session (BMO/AMC) isn't recorded: on past dates show them
-    // as "Reported"; on upcoming dates show them under "Time TBD" so the day isn't blank.
-    if(tbd.length) body+=section(tbd,'', isPast ? '<span class="ic">✓</span>Reported' : '<span class="ic">◷</span>Time TBD');
-    if(!(before.length||after.length||tbd.length)) body='<div class="emptyday">—</div>';
-    html+=`<div class="daycol"><div class="dayhead ${dISO===todayISO?'today':''}">${days[i]} <span class="d">${d.getDate()}</span></div>${body}</div>`;
+    const isPast = dISO < todayISO;
+    let body='', count=0;
+    if(isPast){
+      // Past day → everything already reported; session no longer matters.
+      count=list.length;
+      if(count) body=section(list,'','<span class="ic">✓</span>Reported');
+    } else {
+      // Today / upcoming → only confirmed BMO/AMC; drop unconfirmed (no TBD).
+      const before=list.filter(r=>sessionOf(r.time)==='bmo');
+      const after=list.filter(r=>sessionOf(r.time)==='amc');
+      count=before.length+after.length;
+      body+=section(before,' am','<span class="ic">☀︎</span>Before Open');
+      body+=section(after,' pm','<span class="ic">☾</span>After Close');
+    }
+    if(!count) body='<div class="emptyday">—</div>';
+    html+=`<div class="daycol"><div class="dayhead ${dISO===todayISO?'today':''}"><span class="daypill">${days[i]} ${d.getDate()}${count?` <b>${count}</b>`:''}</span></div>${body}</div>`;
   }
   $('#calGrid').innerHTML=html;
   upgradeLogos($('#calGrid'));
