@@ -21,7 +21,6 @@ print("Starting build...")
 
 # ── 1. Earnings calendar (Finnhub) ───────────────────────────────────────────
 FINNHUB_KEY = os.environ.get('FINNHUB_API_KEY', '')
-ALPHA_KEY   = os.environ.get('ALPHA_KEY', '')  # Alpha Vantage premium (deep EPS est/act history + revenue actuals)
 
 def finnhub_get(path):
     url = f'https://finnhub.io/api/v1{path}&token={FINNHUB_KEY}'
@@ -105,44 +104,6 @@ try:
     with open(mktcap_cache_path) as _f: mktcap_cache = json.load(_f)
 except: mktcap_cache = {}
 
-def parse_mcap(s):
-    if not s: return 0
-    try: return float(s.replace('$', '').replace(',', ''))
-    except: return 0
-
-def mcap_of(r):
-    """Market cap from row, falling back to the cross-build cache."""
-    return parse_mcap(r.get('marketCap', '')) or parse_mcap(mktcap_cache.get(r.get('symbol', ''), ''))
-
-def fetch_mcap_finnhub(sym):
-    """Backfill unknown market caps (Finnhub rows carry none) — cached across builds."""
-    try:
-        d = finnhub_get(f'/stock/profile2?symbol={sym}')
-        mc = d.get('marketCapitalization')  # in $ millions
-        if mc:
-            return sym, f'${mc * 1e6:,.0f}'
-    except:
-        pass
-    return sym, ''
-
-def backfill_mcaps(calendar, label):
-    if not FINNHUB_KEY:
-        return
-    unknown = [r.get('symbol', '') for rows in calendar.values() for r in rows
-               if r.get('symbol') and not mcap_of(r)]
-    unknown = list(dict.fromkeys(unknown))[:120]  # cap per build; cache converges over runs
-    if unknown:
-        print(f"  Backfilling market cap for {len(unknown)} {label} tickers...")
-        with ThreadPoolExecutor(max_workers=2) as ex:
-            for sym, mc in ex.map(fetch_mcap_finnhub, unknown, timeout=180):
-                if mc:
-                    mktcap_cache[sym] = mc
-
-def filter_1b(calendar):
-    """Keep only $1B+ market-cap tickers; drop empty days."""
-    out = {d: [r for r in rows if mcap_of(r) > 1e9] for d, rows in calendar.items()}
-    return {d: rows for d, rows in out.items() if rows}
-
 for date_str, rows in zip(td_list, results):
     if rows:
         earnings[date_str] = rows
@@ -180,40 +141,8 @@ if far_td_list:
     except Exception as e:
         print(f"  ERR Finnhub far-out: {e}")
 
-# ── Merge Finnhub estimates/actuals into near-window NASDAQ rows ──────────────
-# NASDAQ rows carry no revenue estimates; Finnhub's calendar covers far more
-# tickers than FMP free tier (incl. thin names like FIZZ).
-try:
-    fh_near = finnhub_get(f'/calendar/earnings?from={td_list[0]}&to={td_list[-1]}')
-    fh_map = {}
-    for r in fh_near.get('earningsCalendar', []):
-        if r.get('symbol') and r.get('date'):
-            fh_map[(r['date'], r['symbol'])] = r
-    filled = 0
-    for date_str, rows in earnings.items():
-        for row in rows:
-            fh = fh_map.get((date_str, row.get('symbol', '')))
-            if not fh:
-                continue
-            if not row.get('eps') and fh.get('epsEstimate') is not None:
-                row['eps'] = fh['epsEstimate']
-            if row.get('epsActual') is None and fh.get('epsActual') is not None:
-                row['epsActual'] = fh['epsActual']
-            if row.get('revenueEstimate') is None and fh.get('revenueEstimate') is not None:
-                row['revenueEstimate'] = fh['revenueEstimate']
-            if row.get('revenueActual') is None and fh.get('revenueActual') is not None:
-                row['revenueActual'] = fh['revenueActual']
-            filled += 1
-    print(f"  Finnhub near-window merge: {filled} upcoming rows enriched")
-except Exception as e:
-    print(f"  ERR Finnhub near merge: {e}")
-
-# ── $1B+ market-cap filter (upcoming) ─────────────────────────────────────────
-backfill_mcaps(earnings, 'upcoming')
-earnings = filter_1b(earnings)
-
 total_companies = sum(len(v) for v in earnings.values())
-print(f"  Got {total_companies} companies across {len(earnings)} days (after $1B filter)")
+print(f"  Got {total_companies} companies across {len(earnings)} days")
 
 # ── Past earnings calendar (Finnhub, cached in 90-day chunks) ────────────────
 PAST_CACHE_FILE = 'data/past_calendar_cache.json'
@@ -236,20 +165,12 @@ while chunk_end >= cutoff:
     ranges.append((chunk_start.strftime('%Y-%m-%d'), chunk_end.strftime('%Y-%m-%d')))
     chunk_end = chunk_start - timedelta(days=1)
 
-# Always refresh the most recent range; re-fetch older ones weekly so
-# epsActual/revenueActual backfill for rows first cached before report day.
+# Always refresh the most recent range; skip older ones if cached
 recent_range = ranges[0] if ranges else None
 ranges_to_fetch = []
 for fr, to in ranges:
     cache_key = f'{fr}_{to}'
-    stamp = past_calendar_cached.get('_chunks', {}).get(cache_key)
-    fresh = False
-    if isinstance(stamp, str):
-        try:
-            fresh = (today - datetime.strptime(stamp, '%Y-%m-%d').replace(tzinfo=timezone.utc)).days < 7
-        except:
-            pass
-    if not fresh or (fr, to) == recent_range:
+    if cache_key not in past_calendar_cached.get('_chunks', {}) or (fr, to) == recent_range:
         ranges_to_fetch.append((fr, to))
 
 # Always re-fetch today and yesterday individually for fresh epsActual
@@ -262,7 +183,7 @@ print(f"Fetching {len(ranges_to_fetch)} past date ranges from Finnhub...")
 chunks_done = past_calendar_cached.get('_chunks', {})
 for fr, to in ranges_to_fetch:
     rows = fetch_finnhub_range(fr, to)
-    confirmed = [r for r in rows if r.get('symbol')]  # keep all past reporters; a missing BMO/AMC session tag shouldn't drop a reported company
+    confirmed = [r for r in rows if r['time'] in ('time-pre-market', 'time-after-hours')]
     # Store by date
     for row in confirmed:
         dt = row.get('date', '')
@@ -272,7 +193,7 @@ for fr, to in ranges_to_fetch:
             existing = [r for r in past_calendar_cached[dt] if r['symbol'] != row['symbol']]
             existing.append(row)
             past_calendar_cached[dt] = existing
-    chunks_done[f'{fr}_{to}'] = today_str  # date-stamped so old chunks refresh weekly
+    chunks_done[f'{fr}_{to}'] = True
 
 # Fetch today/yesterday individually — always fresh, no cache skip
 for hot_d in hot_dates:
@@ -298,52 +219,75 @@ past_earnings = {}
 for d, rows in past_calendar_cached.items():
     if d == '_chunks' or not rows:
         continue
-    # For today: allow tickers in upcoming_syms if they have epsActual set (already reported)
-    # For past dates: filter out upcoming tickers (avoids Finnhub pre-placing future reports on wrong dates)
-    if d == today_str:
-        clean_rows = [r for r in rows if r.get('symbol','') not in upcoming_syms or r.get('epsActual') is not None]
-    else:
-        clean_rows = [r for r in rows if r.get('symbol','') not in upcoming_syms]
+    # Only keep rows that are NOT in upcoming earnings (avoids Finnhub pre-placing future reports on wrong past dates)
+    clean_rows = [r for r in rows if r.get('symbol','') not in upcoming_syms]
     if clean_rows:
         past_earnings[d] = clean_rows
 print(f"  Past earnings: {len(past_earnings)} days with data (filtered pre-placed upcoming tickers)")
 
-# ── $1B+ market-cap filter (past) ─────────────────────────────────────────────
-# Note: the past cache keeps ALL rows — the filter only applies to what gets
-# published, so a ticker that later grows past $1B reappears automatically.
-backfill_mcaps(past_earnings, 'past')
-past_earnings = filter_1b(past_earnings)
-print(f"  Past earnings after $1B filter: {sum(len(v) for v in past_earnings.values())} companies across {len(past_earnings)} days")
-
+# ── Market-cap floor: show only $500M+ companies across the whole calendar ────
+def _mc_num(s):
+    if not s: return 0.0
+    try: return float(str(s).replace('$', '').replace(',', ''))
+    except: return 0.0
+def mcap_of(r):
+    return _mc_num(r.get('marketCap', '')) or _mc_num(mktcap_cache.get(r.get('symbol', ''), ''))
+MIN_CAP = 5e8  # $500M
+# Enrich rows missing a market cap from the accumulated cache
+# (also gives past rows a real cap so they sort high→low correctly)
+for _src in (earnings, past_earnings):
+    for _d, _rows in _src.items():
+        for _r in _rows:
+            if not _r.get('marketCap'):
+                _cap = mktcap_cache.get(_r.get('symbol', ''), '')
+                if _cap:
+                    _r['marketCap'] = _cap
+# Apply the floor; drop any day left empty
+def _apply_floor(cal):
+    out = {}
+    for _d, _rows in cal.items():
+        keep = [r for r in _rows if mcap_of(r) >= MIN_CAP]
+        if keep:
+            out[_d] = keep
+    return out
+earnings = _apply_floor(earnings)
+past_earnings = _apply_floor(past_earnings)
+total_companies = sum(len(v) for v in earnings.values())
+print(f"  After $500M floor: {total_companies} upcoming, "
+      f"{sum(len(v) for v in past_earnings.values())} past companies")
 
 # ── 2. Earnings history ───────────────────────────────────────────────────────
+def parse_mcap(s):
+    if not s: return 0
+    try: return float(s.replace('$', '').replace(',', ''))
+    except: return 0
 
 # top_tickers: for history fetch — keep lean (≤400)
 # Priority 1: recent past reporters (last 14 days) with mc > 1B — always include
 recent_14d = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
 seen = set()
 top_tickers = []
-past_rows_flat = [(mcap_of(r), r.get('symbol', ''), iso)
+past_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''), iso)
                   for iso, rows in past_earnings.items() for r in rows]
 for mc, sym, iso in sorted(past_rows_flat, reverse=True):
     if sym and sym not in seen and mc > 1e9 and iso >= recent_14d:
         seen.add(sym)
         top_tickers.append(sym)
 # Priority 2: top upcoming tickers by mcap
-all_rows_flat = [(mcap_of(r), r.get('symbol', ''))
+all_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
                  for rows in earnings.values() for r in rows]
 for mc, sym in sorted(all_rows_flat, reverse=True):
     if sym and sym not in seen and mc > 1e9:
         seen.add(sym)
         top_tickers.append(sym)
-    if len(top_tickers) >= 550:
+    if len(top_tickers) >= 300:
         break
-# Priority 3: historical past by mcap up to 650 total
+# Priority 3: historical past by mcap up to 400 total
 for mc, sym, iso in sorted(past_rows_flat, reverse=True):
-    if sym and sym not in seen and mc > 5e9:
+    if sym and sym not in seen and mc > 10e9:
         seen.add(sym)
         top_tickers.append(sym)
-    if len(top_tickers) >= 650:
+    if len(top_tickers) >= 400:
         break
 
 # rev_tickers: for revenue fetch — all recent calendar tickers (last 28 days + upcoming)
@@ -558,73 +502,43 @@ try:
 except: pass
 
 def _sec_quarterly(ticker):
-    """Quarterly revenue from SEC EDGAR — free.
-    Collects every revenue-like XBRL tag as its own series (companies switched
-    tags around 2018, foreign filers use IFRS + 6-K/40-F), picks the dominant
-    series (largest recent value = total revenue, not a segment), then merges
-    other series only where they're consistent — keeps bank segment tags from
-    polluting the numbers."""
+    """Fetch quarterly revenue from SEC EDGAR 10-Q filings — completely free."""
     cik = _cik_map.get(ticker)
     if not cik: return {}
     try:
         url = f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json'
         req = urllib.request.Request(url, headers={'User-Agent': 'retail.picksllc@gmail.com'})
         facts = json.loads(urllib.request.urlopen(req, timeout=20).read())
-        series = []
+        result = {}
         for taxonomy in ['us-gaap', 'ifrs-full']:
             tax = facts.get('facts', {}).get(taxonomy, {})
             for field in ['Revenues', 'Revenue',
                           'RevenueFromContractWithCustomerExcludingAssessedTax',
                           'SalesRevenueNet', 'NoninterestIncome',
-                          'RealEstateRevenueNet', 'RevenueFromContractWithCustomerIncludingAssessedTax',
-                          # bank income-statement tags — banks don't file 'Revenues'
-                          'RevenuesNetOfInterestExpense',
-                          'InterestAndDividendIncomeOperating',
-                          'InterestIncomeExpenseNet']:
+                          'RealEstateRevenueNet', 'RevenueFromContractWithCustomerIncludingAssessedTax']:
                 if field not in tax: continue
-                cur_series = {}
                 for cur, entries in tax[field].get('units', {}).items():
                     fx = _FX.get(cur, 1.0) if cur != 'USD' else 1.0
                     for e in entries:
-                        if e.get('form') not in ('10-Q', '10-K', '20-F', '6-K', '40-F'): continue
+                        if e.get('form') not in ('10-Q', '10-K', '20-F'): continue
                         val = e.get('val', 0)
                         if not val or val <= 0: continue
                         val_usd = val / fx / 1e6
                         if val_usd < 0.01 or val_usd > 5e6: continue
                         try:
                             start_s = e.get('start', '')
+                            end_s = e['end']
                             if not start_s: continue
                             s = datetime.strptime(start_s, '%Y-%m-%d')
-                            en = datetime.strptime(e['end'], '%Y-%m-%d')
-                            if 60 <= (en - s).days <= 105:  # quarterly ~90 days
-                                cur_series.setdefault(en.strftime('%b %Y'), round(val_usd, 1))
+                            en = datetime.strptime(end_s, '%Y-%m-%d')
+                            days = (en - s).days
+                            if 60 <= days <= 105:  # quarterly ~90 days
+                                k = en.strftime('%b %Y')
+                                if k not in result:
+                                    result[k] = round(val_usd, 1)
                         except: continue
-                if cur_series:
-                    series.append(cur_series)
-        if not series:
-            return {}
-        def _latest_dt(d):
-            try: return max(datetime.strptime(k, '%b %Y') for k in d)
-            except: return datetime.min
-        def _latest_val(d):
-            try: return d[max(d, key=lambda k: datetime.strptime(k, '%b %Y'))]
-            except: return 0
-        # Base series: among those with reasonably recent data, the one whose
-        # latest value is biggest (total revenue beats any segment).
-        newest = max(_latest_dt(d) for d in series)
-        recent = [d for d in series if (newest - _latest_dt(d)).days <= 400] or series
-        base = max(recent, key=_latest_val)
-        result = dict(base)
-        for d in series:
-            if d is base: continue
-            common = set(d) & set(result)
-            if common:
-                agree = sum(1 for k in common
-                            if result[k] > 0 and 0.75 <= d[k] / result[k] <= 1.33)
-                if agree < max(1, len(common) // 2):
-                    continue  # inconsistent series (segment tag) — skip
-            for k, v in d.items():
-                result.setdefault(k, v)
+                if result: break
+            if result: break
         return result
     except: return {}
 
@@ -673,67 +587,17 @@ def _fmp_estimates(ticker):
     except Exception as e:
         return {}, {}
 
-# ── FMP stable earnings-calendar (works on free plan; analyst-estimates is blocked) ──
-# Bulk-fetches upcoming EPS + revenue estimates in 4x5-day windows. Cached for 6h
-# in fmp_est_cache['_cal_snapshot'] so the always-on build loop stays under FMP's
-# daily call cap (4 calls / 6h ≈ 16/day vs 250 limit).
-def _fetch_fmp_calendar():
-    rows = []
-    for i in range(4):
-        ws = (datetime.now(timezone.utc) + timedelta(days=i * 5)).strftime('%Y-%m-%d')
-        we = (datetime.now(timezone.utc) + timedelta(days=i * 5 + 4)).strftime('%Y-%m-%d')
-        try:
-            url = f'https://financialmodelingprep.com/stable/earnings-calendar?from={ws}&to={we}&apikey={FMP_API_KEY}'
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=10) as r:
-                rows += json.loads(r.read()) or []
-        except Exception as e:
-            print(f"  ERR FMP calendar {ws}: {e}")
-    return rows
-
-_cal_snap = fmp_est_cache.get('_cal_snapshot') or {}
-_cal_rows = _cal_snap.get('rows') or []
-_cal_fresh = False
-try:
-    _cal_fresh = (datetime.now(timezone.utc) -
-                  datetime.strptime(_cal_snap.get('fetched_at', ''), '%Y-%m-%dT%H:%M')
-                  .replace(tzinfo=timezone.utc)).total_seconds() < 6 * 3600
-except:
-    pass
-if FMP_API_KEY and not _cal_fresh:
-    _fetched = _fetch_fmp_calendar()
-    if _fetched:
-        _cal_rows = _fetched
-        fmp_est_cache['_cal_snapshot'] = {
-            'fetched_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M'),
-            'rows': _cal_rows,
-        }
-
-_fmp_cal_eps, _fmp_cal_rev, _fmp_cal_rev_iso = {}, {}, {}
-for _row in _cal_rows:
-    _sym, _dt_s = _row.get('symbol', ''), _row.get('date', '')
-    if not _sym or not _dt_s:
-        continue
-    try:
-        _qk = datetime.strptime(_dt_s, '%Y-%m-%d').strftime('%b %Y')
-    except:
-        _qk = _dt_s
-    if _row.get('epsEstimated') is not None:
-        _fmp_cal_eps.setdefault(_sym, {})[_qk] = _row['epsEstimated']
-    if _row.get('revenueEstimated'):
-        _rm = round(_row['revenueEstimated'] / 1e6, 1)  # template's fmtM expects $ millions
-        _fmp_cal_rev.setdefault(_sym, {})[_qk] = _rm
-        _fmp_cal_rev_iso.setdefault(_sym, {})[_dt_s] = _rm
-print(f"  FMP calendar estimates: {len(_fmp_cal_eps)} tickers eps, {len(_fmp_cal_rev)} rev")
-
 def _finnhub_rev_estimate_monthly(ticker):
-    return _fmp_cal_rev.get(ticker, {})
+    _, rev = _fmp_estimates(ticker)
+    return rev
 
 def _finnhub_eps_estimate(ticker):
-    return _fmp_cal_eps.get(ticker, {})
+    eps, _ = _fmp_estimates(ticker)
+    return eps
 
 def _finnhub_rev_estimate(ticker):
-    return _fmp_cal_rev_iso.get(ticker, {})
+    _, rev = _fmp_estimates(ticker)
+    return rev
 
 # Upcoming symbols for cache-bypass logic
 upcoming_syms = set(r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol'))
@@ -741,7 +605,7 @@ upcoming_syms = set(r.get('symbol','') for rows in earnings.values() for r in ro
 # FMP income: fetch rev actuals + eps actuals for tickers not cached
 fmp_income_data = dict(fmp_income_cache)
 fmp_inc_fetch = [t for t in all_rev_tickers if t not in fmp_income_data or
-                 t in upcoming_syms or rev_is_stale(t)]
+                 t in upcoming_syms]
 # Also fetch for top_tickers not yet in income cache
 for sym in top_tickers:
     if sym not in fmp_income_data and sym not in fmp_inc_fetch:
@@ -775,7 +639,7 @@ for ticker, entry in fmp_income_data.items():
                                   reverse=True):
             quarters.append({'fiscalQtrEnd': qk, 'eps': eps_val,
                              'consensusForecast': '', 'percentageSurprise': '',
-                             'dateReported': '', 'revActual': None,  # was wrongly copying EPS into revenue
+                             'dateReported': '', 'revActual': eps_by_qtr.get(qk),
                              'revEstimate': None})
         if quarters:
             history[ticker] = quarters
@@ -788,80 +652,44 @@ except Exception as e:
     print(f"WARN FMP income cache save: {e}")
 
 rev_est_data = dict(rev_est_cache)
+with ThreadPoolExecutor(max_workers=8) as ex:
+    for ticker, qtrs in ex.map(lambda t: (t, {}), [], timeout=10):
+        pass  # revenue now from FMP income above
+
+
+
+# Fetch revenue estimates — always retry upcoming tickers with empty cache
+est_tickers = [t for t in rev_tickers if t not in rev_est_data or (t in upcoming_syms and not rev_est_data.get(t))]
+print(f"Fetching revenue estimates for {len(est_tickers)} tickers...")
+with ThreadPoolExecutor(max_workers=8) as ex:
+    for ticker, est in ex.map(lambda t: (t, _finnhub_rev_estimate_monthly(t)), est_tickers, timeout=300):
+        if est:
+            rev_est_data[ticker] = est
+print(f"  Revenue estimates collected: {len(rev_est_data)} tickers")
+
+# Fetch EPS estimates — always retry upcoming tickers with empty cache
 eps_est_data = dict(eps_est_cache)
+eps_est_fetch = [t for t in rev_tickers if t not in eps_est_data or (t in upcoming_syms and not eps_est_data.get(t))]
+print(f"Fetching EPS estimates for {len(eps_est_fetch)} tickers...")
+with ThreadPoolExecutor(max_workers=8) as ex:
+    for ticker, est in ex.map(lambda t: (t, _finnhub_eps_estimate(t)), eps_est_fetch, timeout=300):
+        if est:
+            eps_est_data[ticker] = est
+print(f"  EPS estimates collected: {len(eps_est_data)} tickers")
+
+# Fetch Finnhub per-quarter revenue estimates (keyed by report ISO date)
 fmp_est_data = dict(fmp_est_cache)
-
-# Fiscal quarter-end labels per upcoming symbol ('Jun/2026' -> 'Jun 2026') —
-# the template looks estimates up by this key (or '0q' as fallback).
-fqe_by_sym = {}
-for _rows in earnings.values():
-    for _r in _rows:
-        _s = _r.get('symbol', '')
-        _fq = (_r.get('fiscalQuarterEnding') or '').replace('/', ' ')
-        if _s and _fq and _s not in fqe_by_sym:
-            fqe_by_sym[_s] = _fq
-
-def _remap_est(d, sym):
-    """FMP keys are report-month; template needs fiscal-qtr key + '0q'."""
-    out = dict(d)
-    vals = list(d.values())
-    if vals:
-        out['0q'] = vals[0]
-        _fq = fqe_by_sym.get(sym)
-        if _fq:
-            out[_fq] = vals[0]
-    return out
-
-# Merge FMP calendar estimates — in-memory lookups, no per-ticker HTTP calls
-for _t in set(rev_tickers) | set(_fmp_cal_rev) | set(_fmp_cal_eps):
-    _rev = _finnhub_rev_estimate_monthly(_t)
-    if _rev:
-        rev_est_data[_t] = _remap_est(_rev, _t)   # current upcoming estimate (replace)
-    _eps = _finnhub_eps_estimate(_t)
-    if _eps:
-        eps_est_data[_t] = _remap_est(_eps, _t)
-    _iso = _finnhub_rev_estimate(_t)
-    if _iso:
-        fmp_est_data.setdefault(_t, {}).update(_iso)  # accumulate snapshots by report date
-print(f"  Estimates merged: rev {len(rev_est_data)}, eps {len(eps_est_data)} tickers")
-
-# ── Fallback: harvest estimates already sitting on calendar rows ──────────────
-# Finnhub rows carry epsEstimate/revenueEstimate for far more tickers than FMP
-# free tier. Upcoming rows take priority, then most recent past rows.
-def _parse_eps_str(v):
-    try:
-        s = str(v).replace('$', '').replace(',', '')
-        neg = '(' in s
-        s = s.replace('(', '').replace(')', '')
-        f = float(s)
-        return -f if neg else f
-    except:
-        return None
-
-def _harvest(rows_by_date, dates):
-    for _d in dates:
-        for _r in rows_by_date.get(_d, []):
-            _s = _r.get('symbol', '')
-            if not _s:
-                continue
-            _fq = (_r.get('fiscalQuarterEnding') or '').replace('/', ' ')
-            if not eps_est_data.get(_s):
-                _e = _parse_eps_str(_r.get('eps')) if _r.get('eps') not in (None, '') else None
-                if _e is not None:
-                    _dd = {'0q': _e}
-                    if _fq: _dd[_fq] = _e
-                    eps_est_data[_s] = _dd
-            if not rev_est_data.get(_s):
-                _rv = _r.get('revenueEstimate')
-                if _rv is not None:
-                    _rvm = round(_rv / 1e6, 1) if abs(_rv) >= 2e5 else round(float(_rv), 1)
-                    _dd = {'0q': _rvm}
-                    if _fq: _dd[_fq] = _rvm
-                    rev_est_data[_s] = _dd
-
-_harvest(earnings, sorted(earnings.keys()))                      # upcoming first
-_harvest(past_earnings, sorted(past_earnings.keys(), reverse=True))  # then newest past
-print(f"  After calendar-row harvest: rev {len(rev_est_data)}, eps {len(eps_est_data)} tickers")
+if FINNHUB_KEY:
+    fmp_fetch = [t for t in rev_tickers if t not in fmp_est_data]
+    print(f"Fetching Finnhub revenue estimates for {len(fmp_fetch)} tickers...")
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for ticker, est in ex.map(lambda t: (t, _finnhub_rev_estimate(t)), fmp_fetch, timeout=300):
+            if est:
+                fmp_est_data[ticker] = est
+    print(f"  Finnhub estimates collected: {len(fmp_est_data)} tickers")
+else:
+    fmp_est_data = dict(fmp_est_cache)
+    print("  FINNHUB_KEY not set — skipping Finnhub revenue estimates")
 
 # Merge revenue into history — nearest-quarter match with fallback
 # 1. Exact match  2. ±2 months (handles fiscal offset)  3. Most recent prior value (≤18 months)
@@ -928,118 +756,6 @@ with open(FMP_EST_CACHE_FILE, 'w') as f:
 print(f"  Finnhub estimate cache saved: {len(fmp_est_data)} tickers")
 
 
-# ── Normalize revenue units & backfill missing est/act on calendar rows ──────
-# Finnhub/FMP return revenue in raw dollars; the template's fmtM() expects
-# $ millions. Anything >= 2e5 must be raw dollars (no company books $200B+ in a
-# quarter... except none above that line), so convert those to millions.
-def _norm_rev(v):
-    if isinstance(v, (int, float)) and v and abs(v) >= 2e5:
-        return round(v / 1e6, 1)
-    return v
-
-for _cal in (earnings, past_earnings):
-    for _rows in _cal.values():
-        for _r in _rows:
-            _r['revenueEstimate'] = _norm_rev(_r.get('revenueEstimate'))
-            _r['revenueActual']   = _norm_rev(_r.get('revenueActual'))
-
-# Backfill past calendar rows so every reported ticker shows all four numbers:
-# EPS act/est from history, revenue act from SEC data, revenue est from FMP snapshots.
-_hist_by_key = {}
-for _t, _qs in history.items():
-    for _q in _qs:
-        try:
-            _iso = datetime.strptime(_q.get('dateReported', ''), '%m/%d/%Y').strftime('%Y-%m-%d')
-        except:
-            continue
-        _hist_by_key[(_t, _iso)] = _q
-
-def _hist_near(sym, iso):
-    """History row for (sym, report date) with ±2-day tolerance — sources
-    disagree on AMC/BMO date conventions."""
-    try:
-        base = datetime.strptime(iso, '%Y-%m-%d')
-    except:
-        return None
-    for off in (0, 1, -1, 2, -2):
-        q = _hist_by_key.get((sym, (base + timedelta(days=off)).strftime('%Y-%m-%d')))
-        if q:
-            return q
-    return None
-
-for _d, _rows in past_earnings.items():
-    for _r in _rows:
-        _sym = _r.get('symbol', '')
-        _q = _hist_near(_sym, _d)
-        if _q:
-            if _r.get('epsActual') is None and _q.get('eps') is not None:
-                _r['epsActual'] = _q['eps']
-            if _r.get('eps') in (None, '') and _q.get('consensusForecast'):
-                try: _r['eps'] = float(_q['consensusForecast'])
-                except: pass
-            if _r.get('revenueActual') is None and _q.get('revActual') is not None:
-                _r['revenueActual'] = _q['revActual']        # already $ millions
-            if _r.get('revenueEstimate') is None and _q.get('revEstimate') is not None:
-                _r['revenueEstimate'] = _q['revEstimate']
-        if _r.get('revenueEstimate') is None:
-            _snap = fmp_est_data.get(_sym, {})
-            if _d in _snap:
-                _r['revenueEstimate'] = _snap[_d]
-        if _r.get('revenueActual') is None:
-            try:
-                _fq = (datetime.strptime(_d, '%Y-%m-%d') - timedelta(days=45)).strftime('%b %Y')
-                _r['revenueActual'] = _nearest_rev(revenue_data.get(_sym, {}), _fq)
-            except:
-                pass
-
-# Coverage report — how complete are the four fields on recent past rows?
-_rec = (datetime.now(timezone.utc) - timedelta(days=30)).strftime('%Y-%m-%d')
-_tot = _full = 0
-for _d, _rows in past_earnings.items():
-    if _d < _rec: continue
-    for _r in _rows:
-        _tot += 1
-        if (_r.get('epsActual') is not None and _r.get('eps') not in (None, '')
-                and _r.get('revenueActual') is not None and _r.get('revenueEstimate') is not None):
-            _full += 1
-print(f"  Coverage (past 30d): {_full}/{_tot} rows have all 4 of eps act/est + rev act/est")
-
-# ── Drop tickers that don't file quarterly revenue (foreign ADRs, funds) ─────
-# Keep a ticker if we have quarterly revenue for it, or if we've never yet
-# attempted the SEC fetch (unknown ≠ non-filer; empties are retried each build).
-def _files_quarterly_rev(sym):
-    if revenue_data.get(sym):
-        return True
-    return sym not in fmp_income_data
-
-_bu = sum(len(v) for v in earnings.values())
-_bp = sum(len(v) for v in past_earnings.values())
-earnings = {d: [r for r in rows if _files_quarterly_rev(r.get('symbol', ''))]
-            for d, rows in earnings.items()}
-earnings = {d: rows for d, rows in earnings.items() if rows}
-past_earnings = {d: [r for r in rows if _files_quarterly_rev(r.get('symbol', ''))]
-                 for d, rows in past_earnings.items()}
-past_earnings = {d: rows for d, rows in past_earnings.items() if rows}
-print(f"  Non-filers removed: upcoming {_bu}->{sum(len(v) for v in earnings.values())}, "
-      f"past {_bp}->{sum(len(v) for v in past_earnings.values())}")
-
-# ── Drop tickers with no EPS estimate from any source ─────────────────────────
-# If neither the calendar row nor the harvested estimate tables have an est EPS,
-# there's nothing to compare actuals against — remove from the calendar.
-def _has_eps_est(r):
-    if r.get('eps') not in (None, ''):
-        return True
-    return bool(eps_est_data.get(r.get('symbol', '')))
-
-_bu2 = sum(len(v) for v in earnings.values())
-_bp2 = sum(len(v) for v in past_earnings.values())
-earnings = {d: [r for r in rows if _has_eps_est(r)] for d, rows in earnings.items()}
-earnings = {d: rows for d, rows in earnings.items() if rows}
-past_earnings = {d: [r for r in rows if _has_eps_est(r)] for d, rows in past_earnings.items()}
-past_earnings = {d: rows for d, rows in past_earnings.items() if rows}
-print(f"  No-EPS-est removed: upcoming {_bu2}->{sum(len(v) for v in earnings.values())}, "
-      f"past {_bp2}->{sum(len(v) for v in past_earnings.values())}")
-
 # ── 3. News ───────────────────────────────────────────────────────────────────
 def strip_html(t):
     t = re.sub(r'<!\[CDATA\[(.*?)\]\]>', r'\1', t or '', flags=re.DOTALL)
@@ -1076,16 +792,13 @@ def fetch_news(ticker):
     except:
         return ticker, []
 
-news_tickers = list(history.keys())[:450]
+news_tickers = list(history.keys())
 print(f"Fetching news for {len(news_tickers)} tickers...")
 news = {}
-try:
-    with ThreadPoolExecutor(max_workers=30) as ex:
-        for ticker, items in ex.map(fetch_news, news_tickers, timeout=150):
-            if items:
-                news[ticker] = items
-except Exception as e:
-    print(f"  News fetch stopped early ({e}); continuing with {len(news)} tickers")
+with ThreadPoolExecutor(max_workers=30) as ex:
+    for ticker, items in ex.map(fetch_news, news_tickers, timeout=90):
+        if items:
+            news[ticker] = items
 print(f"  Got news for {len(news)} tickers")
 
 # ── 4. Stock meta lookup ──────────────────────────────────────────────────────
@@ -1215,160 +928,25 @@ if in_ext and price_syms:
         print(f"  WARN YF ext fetch: {e}")
     print(f"  After extended-hours update: {len(price_data)} tickers")
 
-# ── 4b. Alpha Vantage enrichment: deep EPS estimate/actual/surprise history +
-#        revenue actuals. Merged into `history` so the detail modal shows a full
-#        estimate-vs-actual table. Cached + capped + rate-limited; never fatal. ──
-est_act = {}  # reserved for future forward-estimate injection (__ESTACT_JS__)
-if ALPHA_KEY:
-    import time as _avt
-    AV_META_FILE = 'data/av_meta.json'
-    _av_meta = {}
-    try:
-        with open(AV_META_FILE) as _f: _av_meta = json.load(_f)
-    except Exception: pass
-
-    def _av_get(fn, sym):
-        url = f'https://www.alphavantage.co/query?function={fn}&symbol={sym}&apikey={ALPHA_KEY}'
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=20) as r:
-            return json.loads(r.read())
-
-    def _av_month_year(iso):
-        try: return datetime.strptime((iso or '')[:10], '%Y-%m-%d').strftime('%b %Y')
-        except Exception: return None
-
-    def _av_float(x):
-        try:
-            if x in (None, '', 'None', 'none'): return None
-            return float(x)
-        except Exception: return None
-
-    def _av_enrich(sym):
-        """Return sym -> list of quarter dicts (history schema) from AV, newest first."""
-        try:
-            earn = _av_get('EARNINGS', sym)
-        except Exception:
-            return sym, None
-        qe = earn.get('quarterlyEarnings') or []
-        if not qe:
-            return sym, None
-        rev_by = {}
-        try:
-            inc = _av_get('INCOME_STATEMENT', sym)
-            for q in (inc.get('quarterlyReports') or [])[:16]:
-                lbl = _av_month_year(q.get('fiscalDateEnding', ''))
-                tr = _av_float(q.get('totalRevenue'))
-                if lbl and tr is not None:
-                    rev_by[lbl] = round(tr / 1e6, 1)
-        except Exception:
-            pass
-        # Historical revenue (and EPS) estimates from EARNINGS_ESTIMATES (per fiscal quarter).
-        revest_by = {}
-        try:
-            est = _av_get('EARNINGS_ESTIMATES', sym)
-            for e in (est.get('estimates') or []):
-                if e.get('horizon') != 'fiscal quarter':
-                    continue
-                lbl = _av_month_year(e.get('date', ''))
-                rv = _av_float(e.get('revenue_estimate_average'))
-                if lbl and rv is not None:
-                    revest_by[lbl] = round(rv / 1e6, 1)
-        except Exception:
-            pass
-        out = []
-        for q in qe[:12]:
-            lbl = _av_month_year(q.get('fiscalDateEnding', ''))
-            if not lbl: continue
-            out.append({
-                'fiscalQtrEnd':       lbl,
-                'dateReported':       q.get('reportedDate', ''),
-                'eps':                _av_float(q.get('reportedEPS')),
-                'consensusForecast':  _av_float(q.get('estimatedEPS')),
-                'percentageSurprise': _av_float(q.get('surprisePercentage')),
-                'revActual':          rev_by.get(lbl),
-                'revEstimate':        revest_by.get(lbl),
-                'reportTime':         q.get('reportTime', ''),
-            })
-        return sym, out
-
-    # Prioritize tickers the user actually sees: upcoming reporters, then recent.
-    _now_ts = int(today.timestamp())
-    _prio = []
-    for _d in sorted(earnings.keys()):
-        for _r in earnings[_d]:
-            if _r.get('symbol'): _prio.append(_r['symbol'])
-    for _d in sorted(past_earnings.keys(), reverse=True)[:45]:  # ~2 months of past reporters
-        for _r in past_earnings[_d]:
-            if _r.get('symbol'): _prio.append(_r['symbol'])
-    _seen = set(); _prio = [t for t in _prio if not (t in _seen or _seen.add(t))]
-    def _av_stale(t):
-        m = _av_meta.get(t)
-        return (not m) or (_now_ts - m.get('ts', 0) > 12 * 3600)
-    _to_fetch = [t for t in _prio if _av_stale(t)][:40]  # 3 AV calls/ticker, paced under 75/min
-
-    print(f"Alpha Vantage enrich: {len(_to_fetch)} tickers (of {len(_prio)} candidates)")
-    _av_ok = 0
-    for _sym in _to_fetch:
-        try:
-            _s, _rows = _av_enrich(_sym)
-            if _rows:
-                _existing = {q.get('fiscalQtrEnd'): q for q in history.get(_s, [])}
-                for _row in _rows:  # carry forward existing revenue est/act if AV lacks it
-                    _ex = _existing.get(_row['fiscalQtrEnd'], {})
-                    if _row.get('revEstimate') is None: _row['revEstimate'] = _ex.get('revEstimate')
-                    if _row.get('revActual')   is None: _row['revActual']   = _ex.get('revActual')
-                history[_s] = _rows
-                _av_ok += 1
-            _av_meta[_sym] = {'ts': _now_ts}
-        except Exception as _e:
-            print(f"  AV enrich {_sym}: {_e}")
-        _avt.sleep(0.85)  # keep under 75 req/min
-    print(f"  Alpha Vantage enriched {_av_ok} tickers")
-    try:
-        os.makedirs('data', exist_ok=True)
-        with open(AV_META_FILE, 'w') as _f: json.dump(_av_meta, _f)
-    except Exception as _e:
-        print(f"  WARN av_meta save: {_e}")
-
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
-
-# ── Backfill recent past days the primary feed left empty, using NASDAQ (full past rosters) ──
-for _off in range(1, 11):
-    _d = (today - timedelta(days=_off)).strftime('%Y-%m-%d')
-    if past_earnings.get(_d):
-        continue  # primary feed already covered this day
-    _added = []
-    for _r in fetch_nasdaq_day(_d):
-        _sym = _r.get('symbol', '')
-        if not _sym or _sym in upcoming_syms or mcap_of(_r) <= 1e9:
-            continue
-        _added.append(_r)
-    if _added:
-        past_earnings[_d] = _added
-        print(f"  NASDAQ backfill {_d}: +{len(_added)} companies")
 
 with open('template.html', 'r') as f:
     template = f.read()
 
-def js_safe(obj):
-    """JSON for embedding in <script>: escape < to prevent </script> breakout (XSS)."""
-    return json.dumps(obj, ensure_ascii=False).replace('<', '\\u003c')
-
 output = (template
-    .replace('__PAST_EARNINGS_JS__', js_safe(past_earnings))
-    .replace('__EARNINGS_JS__', js_safe(earnings))
-    .replace('__HISTORY_JS__',  js_safe(history))
-    .replace('__REVENUE_JS__',  js_safe(revenue_data))
-    .replace('__REV_EST_JS__', js_safe(rev_est_data))
-    .replace('__EPS_EST_JS__', js_safe(eps_est_data))
-    .replace('__NEWS_JS__',     js_safe(news))
-    .replace('__META_JS__',     js_safe(stock_meta))
-    .replace('__ESTACT_JS__',   js_safe(est_act))
-    .replace('__PRICES_JS__',     js_safe(price_data))
-    .replace('__MKTCAP_JS__',    js_safe(mktcap_cache))
-    .replace('__FH_KEY_JS__',   js_safe(FINNHUB_KEY))
-    .replace('__BUILT_AT__',    js_safe(built_at)))
+    .replace('__PAST_EARNINGS_JS__', json.dumps(past_earnings, ensure_ascii=False))
+    .replace('__EARNINGS_JS__', json.dumps(earnings,   ensure_ascii=False))
+    .replace('__HISTORY_JS__',  json.dumps(history,    ensure_ascii=False))
+    .replace('__REVENUE_JS__',  json.dumps(revenue_data, ensure_ascii=False))
+    .replace('__REV_EST_JS__', json.dumps(rev_est_data,  ensure_ascii=False))
+    .replace('__EPS_EST_JS__', json.dumps(eps_est_data,  ensure_ascii=False))
+    .replace('__NEWS_JS__',     json.dumps(news,       ensure_ascii=False))
+    .replace('__META_JS__',     json.dumps(stock_meta, ensure_ascii=False))
+    .replace('__PRICES_JS__',     json.dumps(price_data, ensure_ascii=False))
+    .replace('__MKTCAP_JS__',    json.dumps(mktcap_cache, ensure_ascii=False))
+    .replace('__FH_KEY_JS__',   json.dumps(FINNHUB_KEY, ensure_ascii=False))
+    .replace('__BUILT_AT__',    json.dumps(built_at)))
 
 with open('docs/index.html', 'w') as f:
     f.write(output)
