@@ -273,6 +273,8 @@ for mc, sym, iso in sorted(past_rows_flat, reverse=True):
     if sym and sym not in seen and mc > 1e9 and iso >= recent_14d:
         seen.add(sym)
         top_tickers.append(sym)
+    if len(top_tickers) >= 250:   # cap Priority 1 so history/news stay lean
+        break
 # Priority 2: top upcoming tickers by mcap
 all_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
                  for rows in earnings.values() for r in rows]
@@ -795,10 +797,14 @@ def fetch_news(ticker):
 news_tickers = list(history.keys())
 print(f"Fetching news for {len(news_tickers)} tickers...")
 news = {}
-with ThreadPoolExecutor(max_workers=30) as ex:
-    for ticker, items in ex.map(fetch_news, news_tickers, timeout=90):
-        if items:
-            news[ticker] = items
+# Best-effort: never let a slow news feed fail the whole build.
+try:
+    with ThreadPoolExecutor(max_workers=30) as ex:
+        for ticker, items in ex.map(fetch_news, news_tickers, timeout=150):
+            if items:
+                news[ticker] = items
+except Exception as e:
+    print(f"  news fetch stopped early ({type(e).__name__}); continuing with {len(news)} collected")
 print(f"  Got news for {len(news)} tickers")
 
 # ── 4. Stock meta lookup ──────────────────────────────────────────────────────
