@@ -236,14 +236,9 @@ function render(){
       const more = items.length>12 ? `<div class="tiles"><div class="morebox"><div class="tile moretile">+${items.length-11}</div><div class="tick2">more</div></div></div>` : '';
       return `<div class="sess">${lab}<div class="tiles">${tiles}</div>${more}</div>`;
     };
-    const isPast = dISO < todayISO;
     let body='', count=0;
-    if(isPast){
-      // Past day → everything already reported; session no longer matters.
-      count=list.length;
-      if(count) body=section(list,'','<span class="ic">✓</span>Reported');
-    } else {
-      // Today / upcoming → only confirmed BMO/AMC; drop unconfirmed (no TBD).
+    {
+      // Every day → confirmed BMO/AMC only; drop unconfirmed (no TBD).
       const before=list.filter(r=>sessionOf(r.time)==='bmo');
       const after=list.filter(r=>sessionOf(r.time)==='amc');
       count=before.length+after.length;
