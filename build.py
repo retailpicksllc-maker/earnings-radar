@@ -127,7 +127,7 @@ def map_worker_row(e):
         'divergence': bool(e.get('divergence_flag')),
     }
 
-_win_from = (today - timedelta(days=45)).strftime('%Y-%m-%d')
+_win_from = (today - timedelta(days=62)).strftime('%Y-%m-%d')  # worker keeps ~60 days of history
 _win_to   = (today + timedelta(days=60)).strftime('%Y-%m-%d')
 print(f"Fetching calendar from worker ({_win_from} .. {_win_to}, min_cap={MIN_CAP_MUSD}M)...")
 _events = fetch_worker_calendar(_win_from, _win_to)
