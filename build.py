@@ -57,208 +57,82 @@ def fetch_finnhub_range(from_d, to_d):
 today = datetime.now(timezone.utc)
 today_str = today.strftime('%Y-%m-%d')
 
-# ── Upcoming earnings: NASDAQ API (per-day, next 14 trading days) ────────────
-def fetch_nasdaq_day(date_str):
-    url = f'https://api.nasdaq.com/api/calendar/earnings?date={date_str}'
+# ── Calendar data: worker API is the SINGLE source ───────────────────────────
+WORKER_BASE = "https://captivating-creation-production-3d49.up.railway.app"
+MIN_CAP_MUSD = 500  # $500M floor (worker applies this server-side)
+
+def fetch_worker_calendar(frm, to, min_cap=MIN_CAP_MUSD):
+    url = f"{WORKER_BASE}/v1/calendar?from={frm}&to={to}&min_cap={min_cap}"
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with urllib.request.urlopen(req, timeout=60) as r:
             data = json.loads(r.read())
-        rows = (data.get('data') or {}).get('rows') or []
-        out = []
-        for row in rows:
-            sym = row.get('symbol', '').strip()
-            if not sym:
-                continue
-            out.append({
-                'symbol': sym,
-                'time': row.get('time', 'time-not-supplied'),
-                'fiscalQuarterEnding': row.get('fiscalQuarterEnding', ''),
-                'eps': row.get('epsForecast'),
-                'epsActual': None,
-                'revenueEstimate': None,
-                'revenueActual': None,
-                'marketCap': row.get('marketCap', ''),
-                'name': row.get('name', sym),
-            })
-        return out
+        if isinstance(data, list):
+            return data
+        return data.get('data') or data.get('rows') or data.get('events') or []
     except Exception as e:
-        print(f"  ERR NASDAQ {date_str}: {e}")
+        print(f"  ERR worker calendar {frm}..{to}: {e}")
         return []
 
-# Build list of next 14 trading days
-td_list = []
-d = today
-while len(td_list) < 14:
-    if d.weekday() < 5:
-        td_list.append(d.strftime('%Y-%m-%d'))
-    d += timedelta(days=1)
+def _worker_fqe(e):
+    fy = e.get('fiscal_year')
+    fq = e.get('fiscal_quarter', '') or ''
+    return f"{fq}/{str(fy)[2:]}" if (fy and fq) else fq
 
-print(f"Fetching upcoming earnings from NASDAQ ({td_list[0]} to {td_list[-1]})...")
+def map_worker_row(e):
+    rt = (e.get('report_time') or 'unknown').lower()
+    time_val = ('time-pre-market' if rt == 'bmo'
+                else 'time-after-hours' if rt == 'amc'
+                else 'time-not-supplied')
+    cap = e.get('market_cap_musd') or 0
+    try:
+        cap_str = f"${int(float(cap) * 1_000_000):,}" if cap else ''
+    except Exception:
+        cap_str = ''
+    return {
+        'symbol': e.get('ticker', ''),
+        'time': time_val,
+        'fiscalQuarterEnding': _worker_fqe(e),
+        'eps': e.get('eps_est'),
+        'epsActual': e.get('eps_act'),
+        'revenueEstimate': e.get('rev_est'),
+        'revenueActual': e.get('rev_act'),
+        'marketCap': cap_str,
+        'name': e.get('ticker', ''),
+        'status': e.get('status', ''),
+    }
+
+_win_from = (today - timedelta(days=45)).strftime('%Y-%m-%d')
+_win_to   = (today + timedelta(days=60)).strftime('%Y-%m-%d')
+print(f"Fetching calendar from worker ({_win_from} .. {_win_to}, min_cap={MIN_CAP_MUSD}M)...")
+_events = fetch_worker_calendar(_win_from, _win_to)
+print(f"  Worker returned {len(_events)} events")
+
 earnings = {}
-with ThreadPoolExecutor(max_workers=5) as ex:
-    results = list(ex.map(fetch_nasdaq_day, td_list))
-# Load existing mktcap cache
-mktcap_cache_path = 'data/marketcap_cache.json'
-try:
-    with open(mktcap_cache_path) as _f: mktcap_cache = json.load(_f)
-except: mktcap_cache = {}
-
-for date_str, rows in zip(td_list, results):
-    if rows:
-        earnings[date_str] = rows
-        # Populate mktcap cache from NASDAQ data
-        for r in rows:
-            sym = r.get('symbol','')
-            mc = r.get('marketCap','')
-            if sym and mc:
-                mktcap_cache[sym] = mc
-
-# Fill in further-out dates (Aug+) from Finnhub where NASDAQ is sparse
-far_td_list = []
-d2 = today + timedelta(days=14)
-while len(far_td_list) < 26:
-    if d2.weekday() < 5:
-        far_td_list.append(d2.strftime('%Y-%m-%d'))
-    d2 += timedelta(days=1)
-if far_td_list:
-    try:
-        fh_data = finnhub_get(f'/calendar/earnings?from={far_td_list[0]}&to={far_td_list[-1]}')
-        for r in fh_data.get('earningsCalendar', []):
-            sym = r.get('symbol', '')
-            dt = r.get('date', '')
-            if not sym or not dt:
-                continue
-            hour = r.get('hour', '')
-            time_val = 'time-pre-market' if hour == 'bmo' else ('time-after-hours' if hour == 'amc' else 'time-not-supplied')
-            earnings.setdefault(dt, []).append({
-                'symbol': sym, 'time': time_val,
-                'fiscalQuarterEnding': f"Q{r.get('quarter','')}/{str(r.get('year',''))[2:]}",
-                'eps': r.get('epsEstimate'), 'epsActual': None,
-                'revenueEstimate': None, 'revenueActual': None,
-                'marketCap': '', 'name': sym,
-            })
-    except Exception as e:
-        print(f"  ERR Finnhub far-out: {e}")
-
-total_companies = sum(len(v) for v in earnings.values())
-print(f"  Got {total_companies} companies across {len(earnings)} days")
-
-# ── Past earnings calendar (Finnhub, cached in 90-day chunks) ────────────────
-PAST_CACHE_FILE = 'data/past_calendar_cache.json'
-past_calendar_cached = {}
-if os.path.exists(PAST_CACHE_FILE):
-    try:
-        with open(PAST_CACHE_FILE) as f:
-            past_calendar_cached = json.load(f)
-        print(f"  Loaded past cache: {len(past_calendar_cached)} days cached")
-    except:
-        pass
-
-# Build 90-day date ranges going back up to 1 year
-# Always re-fetch the current 90-day window (catches recent reports)
-cutoff = today - timedelta(days=365)
-ranges = []
-chunk_end = today - timedelta(days=1)
-while chunk_end >= cutoff:
-    chunk_start = max(chunk_end - timedelta(days=89), cutoff)
-    ranges.append((chunk_start.strftime('%Y-%m-%d'), chunk_end.strftime('%Y-%m-%d')))
-    chunk_end = chunk_start - timedelta(days=1)
-
-# Always refresh the most recent range; skip older ones if cached
-recent_range = ranges[0] if ranges else None
-ranges_to_fetch = []
-for fr, to in ranges:
-    cache_key = f'{fr}_{to}'
-    if cache_key not in past_calendar_cached.get('_chunks', {}) or (fr, to) == recent_range:
-        ranges_to_fetch.append((fr, to))
-
-# Always re-fetch today and yesterday individually for fresh epsActual
-hot_dates = []
-for offset in [0, 1]:
-    d = (today - timedelta(days=offset)).strftime('%Y-%m-%d')
-    hot_dates.append(d)
-
-print(f"Fetching {len(ranges_to_fetch)} past date ranges from Finnhub...")
-chunks_done = past_calendar_cached.get('_chunks', {})
-for fr, to in ranges_to_fetch:
-    rows = fetch_finnhub_range(fr, to)
-    confirmed = [r for r in rows if r['time'] in ('time-pre-market', 'time-after-hours')]
-    # Store by date
-    for row in confirmed:
-        dt = row.get('date', '')
-        if dt:
-            past_calendar_cached.setdefault(dt, [])
-            # Upsert by symbol — always update so epsActual/revenueActual refresh
-            existing = [r for r in past_calendar_cached[dt] if r['symbol'] != row['symbol']]
-            existing.append(row)
-            past_calendar_cached[dt] = existing
-    chunks_done[f'{fr}_{to}'] = True
-
-# Fetch today/yesterday individually — always fresh, no cache skip
-for hot_d in hot_dates:
-    rows = fetch_finnhub_range(hot_d, hot_d)
-    # Include all tickers (confirmed or not) for hot dates — they've already reported
-    for row in rows:
-        dt = row.get('date', hot_d)
-        if dt and row.get('symbol'):
-            past_calendar_cached.setdefault(dt, [])
-            existing = [r for r in past_calendar_cached[dt] if r['symbol'] != row['symbol']]
-            existing.append(row)
-            past_calendar_cached[dt] = existing
-
-past_calendar_cached['_chunks'] = chunks_done
-os.makedirs('data', exist_ok=True)
-with open(PAST_CACHE_FILE, 'w') as f:
-    json.dump(past_calendar_cached, f)
-print(f"  Past cache saved")
-
-# Build upcoming symbol set — remove any ticker from past dates that belongs to upcoming
-upcoming_syms = {r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')}
 past_earnings = {}
-for d, rows in past_calendar_cached.items():
-    if d == '_chunks' or not rows:
+for _e in _events:
+    _d = _e.get('report_date', '')
+    if not _d or not _e.get('ticker'):
         continue
-    # Only keep rows that are NOT in upcoming earnings (avoids Finnhub pre-placing future reports on wrong past dates)
-    clean_rows = [r for r in rows if r.get('symbol','') not in upcoming_syms]
-    if clean_rows:
-        past_earnings[d] = clean_rows
-print(f"  Past earnings: {len(past_earnings)} days with data (filtered pre-placed upcoming tickers)")
+    _row = map_worker_row(_e)
+    (earnings if _d >= today_str else past_earnings).setdefault(_d, []).append(_row)
 
-# ── Market-cap floor: show only $500M+ companies across the whole calendar ────
-def _mc_num(s):
-    if not s: return 0.0
-    try: return float(str(s).replace('$', '').replace(',', ''))
-    except: return 0.0
-def mcap_of(r):
-    return _mc_num(r.get('marketCap', '')) or _mc_num(mktcap_cache.get(r.get('symbol', ''), ''))
-MIN_CAP = 5e8  # $500M
-# Enrich rows missing a market cap from the accumulated cache
-# (also gives past rows a real cap so they sort high→low correctly)
-for _src in (earnings, past_earnings):
-    for _d, _rows in _src.items():
-        for _r in _rows:
-            if not _r.get('marketCap'):
-                _cap = mktcap_cache.get(_r.get('symbol', ''), '')
-                if _cap:
-                    _r['marketCap'] = _cap
-# Apply the floor; drop any day left empty
-def _apply_floor(cal, keep_unknown=False):
-    out = {}
-    for _d, _rows in cal.items():
-        # Upcoming: strict — drop anything not confirmed >= $500M.
-        # Past (keep_unknown): only drop companies we can CONFIRM are < $500M,
-        # so already-reported tickers never vanish when their cap is momentarily
-        # missing from the feed.
-        keep = [r for r in _rows if mcap_of(r) >= MIN_CAP or (keep_unknown and mcap_of(r) == 0)]
-        if keep:
-            out[_d] = keep
-    return out
-earnings = _apply_floor(earnings)
-past_earnings = _apply_floor(past_earnings, keep_unknown=True)
+def _mc_sort(r):
+    try:
+        return float(str(r.get('marketCap', '')).replace('$', '').replace(',', ''))
+    except Exception:
+        return 0.0
+for _cal in (earnings, past_earnings):
+    for _d in _cal:
+        _cal[_d].sort(key=_mc_sort, reverse=True)
+
+# Stubs so the downstream (history / news / prices / serialize) stays unchanged.
+mktcap_cache = {}
+mktcap_cache_path = 'data/marketcap_cache.json'
+
 total_companies = sum(len(v) for v in earnings.values())
-print(f"  After $500M floor: {total_companies} upcoming, "
-      f"{sum(len(v) for v in past_earnings.values())} past companies")
+print(f"  Upcoming: {total_companies} across {len(earnings)} days | "
+      f"Past: {sum(len(v) for v in past_earnings.values())} across {len(past_earnings)} days")
 
 # ── 2. Earnings history ───────────────────────────────────────────────────────
 def parse_mcap(s):
@@ -937,29 +811,6 @@ if in_ext and price_syms:
     except Exception as e:
         print(f"  WARN YF ext fetch: {e}")
     print(f"  After extended-hours update: {len(price_data)} tickers")
-
-# ── Backfill recent past days the primary (Finnhub) feed left empty ───────────
-# NASDAQ has full rosters WITH market caps for past dates, so these stay stable
-# every build (unlike Finnhub, which returns nothing for some past days).
-# Placed here (after history/news/prices) so it never bloats those fetches.
-for _off in range(1, 11):
-    _d = (today - timedelta(days=_off)).strftime('%Y-%m-%d')
-    _existing = past_earnings.get(_d, [])
-    _existing_syms = {r.get('symbol', '') for r in _existing}
-    _added = []
-    for _r in fetch_nasdaq_day(_d):
-        _sym = _r.get('symbol', '')
-        if not _sym or _sym in upcoming_syms or _sym in _existing_syms:
-            continue
-        if mcap_of(_r) < MIN_CAP:      # respect the $500M floor
-            continue
-        _existing_syms.add(_sym)
-        _added.append(_r)
-    if _added:
-        merged = _existing + _added
-        merged.sort(key=lambda r: mcap_of(r), reverse=True)
-        past_earnings[_d] = merged
-        print(f"  NASDAQ backfill {_d}: +{len(_added)} (day now {len(merged)}, >= $500M)")
 
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
