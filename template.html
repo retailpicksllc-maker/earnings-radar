@@ -88,7 +88,19 @@
   .sheet .top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
   .sheet .top .tile{width:46px;height:46px;flex:none}
   .sheet h2{font-size:22px;font-weight:900} .sheet .nm{color:var(--muted);font-size:13px}
-  .sheet .x{margin-left:auto;background:var(--card);border:1px solid var(--border2);color:var(--text);width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px}
+  .sheet .x{background:var(--card);border:1px solid var(--border2);color:var(--text);width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px;flex:none}
+  .detpx{margin-left:auto;text-align:right;line-height:1.15}
+  .detpx .px{font-size:21px;font-weight:900;letter-spacing:-.3px}
+  .detpx .chg{font-size:12.5px;font-weight:800}
+  .detpx .chg.up{color:#16c784} .detpx .chg.down{color:#ea3943}
+  .detpx .ah{font-size:11px;color:var(--muted);margin-top:1px}
+  .detpx .phase{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.5px;padding:1px 6px;border-radius:6px;margin-top:3px;text-transform:uppercase}
+  .detpx .phase.live{background:rgba(22,199,132,.16);color:#16c784}
+  .detpx .phase.after,.detpx .phase.pre{background:rgba(47,107,255,.16);color:var(--blueLt)}
+  .detpx .phase.closed{background:var(--card);color:var(--muted)}
+  .detchart{margin:2px 0 14px}
+  .detchart svg{width:100%;height:120px;display:block}
+  .detchart .cap{color:var(--muted);font-size:10.5px;margin-top:4px;display:flex;justify-content:space-between}
   .statrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
   .statbox{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:12px}
   .statbox .l{font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--muted);text-transform:uppercase}
@@ -335,6 +347,52 @@ function numv(v){if(v===null||v===undefined||v==='')return null;const n=+String(
 function fmtEps(v){const n=numv(v);return n===null?'—':`$${n.toFixed(2)}`;}
 function fmtRevM(v){let m=numv(v);if(m===null)return '—';return m>=1000?`$${(m/1000).toFixed(1)}B`:`$${m.toFixed(0)}M`;}
 function surprise(a,e){if(a==null||e==null||e===''||e==0)return '';const p=((a-e)/Math.abs(e))*100;return `${p>=0?'+':''}${p.toFixed(1)}%`;}
+// ── Detail view: live price header (+ after-hours) and a 30-day chart. ──
+function marketPhase(){
+  const et=new Date(new Date().toLocaleString('en-US',{timeZone:'America/New_York'}));
+  const dow=et.getDay(), mins=et.getHours()*60+et.getMinutes();
+  if(dow===0||dow===6) return 'closed';
+  if(mins>=570&&mins<960) return 'live';     // 9:30–16:00 ET
+  if(mins>=960&&mins<1200) return 'after';   // 16:00–20:00 ET
+  if(mins>=240&&mins<570) return 'pre';      // 4:00–9:30 ET
+  return 'closed';
+}
+async function loadDetailQuote(sym){
+  const el=document.getElementById('detPx'); if(!el) return;
+  try{
+    const r=await fetch(`${WORKER_BASE}/v1/quote/${encodeURIComponent(sym)}`,{cache:'no-store'});
+    if(!r.ok) return; const q=await r.json();
+    if(!q||q.last==null) return;
+    const phase=marketPhase(), last=+q.last, dp=+(q.change_pct||0), ch=+(q.change||0), up=dp>=0, sgn=up?'+':'';
+    const lbl={live:'Live',after:'After hours',pre:'Pre-market',closed:'At close'}[phase];
+    const ah=(phase==='after'||phase==='pre')&&q.prev_close!=null
+      ? `<div class="ah">Close $${(+q.prev_close).toFixed(2)}</div>` : '';
+    el.innerHTML=`<div class="px">$${last.toFixed(2)}</div>`+
+      `<div class="chg ${up?'up':'down'}">${sgn}${ch.toFixed(2)} (${sgn}${dp.toFixed(2)}%)</div>`+
+      ah+`<div class="phase ${phase}">${lbl}</div>`;
+  }catch(e){ /* offline/CORS: leave header empty */ }
+}
+function drawDetChart(el,pts){
+  if(!pts||pts.length<2){el.innerHTML='';return;}
+  const cs=pts.map(p=>p.c), n=cs.length, min=Math.min(...cs), max=Math.max(...cs), rng=(max-min)||1;
+  const W=520,H=120,pad=5, X=i=>(i/(n-1))*(W-pad*2)+pad, Y=c=>H-pad-((c-min)/rng)*(H-pad*2);
+  const line=cs.map((c,i)=>`${X(i).toFixed(1)},${Y(c).toFixed(1)}`).join(' ');
+  const up=cs[n-1]>=cs[0], col=up?'#16c784':'#ea3943';
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`+
+    `<polygon points="${pad},${H-pad} ${line} ${W-pad},${H-pad}" fill="${col}" opacity="0.10"/>`+
+    `<polyline points="${line}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`+
+    `<div class="cap"><span>${esc(pts[0].t||'')}</span><span>30-day · $${min.toFixed(2)}–$${max.toFixed(2)}</span><span>${esc(pts[n-1].t||'')}</span></div>`;
+}
+async function loadDetChart(sym){
+  const el=document.getElementById('detChart'); if(!el) return;
+  if(sparkCache[sym]&&sparkCache[sym].length){ drawDetChart(el,sparkCache[sym]); return; }
+  try{
+    const r=await fetch(`${WORKER_BASE}/v1/chart/${encodeURIComponent(sym)}`,{cache:'no-store'});
+    if(!r.ok) return; const j=await r.json();
+    const pts=(j&&j.points)?j.points:((Array.isArray(j)&&j[0]&&j[0].points)?j[0].points:[]);
+    if(pts.length){ sparkCache[sym]=pts; drawDetChart(el,pts); }
+  }catch(e){ /* offline: hide chart */ }
+}
 function openDetail(sym,date){
   const rowObj=(DATA.find(r=>r.symbol===sym&&r.date===date)||{}).row||{};
   const name=rowObj.name||(META[sym]&&META[sym].name)||sym;
@@ -356,8 +414,10 @@ function openDetail(sym,date){
     <div class="top">
       <div class="tile mono" style="background:${monoColor(sym)}" data-logo="${esc(sym)}">${initial}</div>
       <div><h2>${esc(sym)}</h2><div class="nm">${esc(name)}</div></div>
+      <div class="detpx" id="detPx"></div>
       <button class="x" onclick="closeDetail()">✕</button>
     </div>
+    <div class="detchart" id="detChart"></div>
     <div class="statusline"><span class="dot" style="background:${reported?'var(--green)':'var(--sun)'}"></span>${reported?('Reported'+(date?(' · '+fmtDay(date)):'')):('Estimates · reports '+(date?fmtDay(date):'soon'))}</div>
     <div class="seclabel">${reported?'Most recent report':'Consensus estimates'}</div>
     <div class="statrow">
@@ -371,8 +431,12 @@ function openDetail(sym,date){
   `;
   upgradeLogos($('#sheet'));
   $('#overlay').classList.add('on');
+  loadDetChart(sym);
+  loadDetailQuote(sym);
+  clearInterval(window._detTimer);
+  window._detTimer=setInterval(()=>loadDetailQuote(sym),5000);
 }
-function closeDetail(){$('#overlay').classList.remove('on');}
+function closeDetail(){clearInterval(window._detTimer);$('#overlay').classList.remove('on');}
 $('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeDetail();});
 $('#calGrid').addEventListener('click',e=>{const mb=e.target.closest('.morebox');if(mb){const box=mb.closest('.sess')||mb.closest('.daycol');if(box)box.querySelectorAll('.xhide').forEach(x=>x.classList.remove('xhide'));mb.remove();return;}const w=e.target.closest('.tilewrap');if(w)openDetail(w.getAttribute('data-sym'),w.getAttribute('data-date'));});
 
