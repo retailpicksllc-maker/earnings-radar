@@ -79,6 +79,13 @@ def _worker_fqe(e):
     fq = e.get('fiscal_quarter', '') or ''
     return f"{fq}/{str(fy)[2:]}" if (fy and fq) else fq
 
+def _rev_musd(v):
+    """Worker revenue is raw USD; convert to $millions for the UI formatter."""
+    try:
+        return round(float(v) / 1e6, 1) if v is not None else None
+    except Exception:
+        return None
+
 def map_worker_row(e):
     rt = (e.get('report_time') or 'unknown').lower()
     # If the coarse report_time is unknown, derive session from the richer
@@ -107,8 +114,9 @@ def map_worker_row(e):
         'fiscalQuarterEnding': _worker_fqe(e),
         'eps': e.get('eps_est'),
         'epsActual': e.get('eps_act'),
-        'revenueEstimate': e.get('rev_est'),
-        'revenueActual': e.get('rev_act'),
+        # Worker sends revenue as raw USD; the UI formatter expects $millions.
+        'revenueEstimate': _rev_musd(e.get('rev_est')),
+        'revenueActual': _rev_musd(e.get('rev_act')),
         'marketCap': cap_str,
         'name': e.get('ticker', ''),
         'status': e.get('status', ''),
